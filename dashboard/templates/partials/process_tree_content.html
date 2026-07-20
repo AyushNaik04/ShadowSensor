@@ -1,0 +1,32 @@
+{% macro render_node(node) %}
+<li>
+  {% if node.children %}
+  <button type="button" class="tree-toggle" aria-label="Toggle">▶</button>
+  {% else %}
+  <span class="tree-toggle">•</span>
+  {% endif %}
+  <span class="tree-image" title="{{ node.image or '' }}">{{ node.image | basename }}</span>
+  <span class="tree-pid">PID {{ node.pid }}</span>
+  <span class="tree-ts">{{ node.timestamp | format_ts }}</span>
+  {% if node.command_line %}
+  <span class="cmd-line">{{ node.command_line | truncate(60) }}</span>
+  {% endif %}
+  {% if node.children %}
+  <ul style="display:none">
+    {% for child in node.children %}
+    {{ render_node(child) }}
+    {% endfor %}
+  </ul>
+  {% endif %}
+</li>
+{% endmacro %}
+
+{% if roots %}
+<ul class="process-tree">
+  {% for root in roots %}
+  {{ render_node(root) }}
+  {% endfor %}
+</ul>
+{% else %}
+<div class="empty-state">No ProcessCreate events in this time range</div>
+{% endif %}

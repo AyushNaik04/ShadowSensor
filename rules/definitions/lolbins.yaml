@@ -1,0 +1,329 @@
+- id: LOLBIN_MSHTA_001
+  name: MSHTA Execution
+  description: >
+    Detects mshta.exe launched, a living-off-the-land binary commonly used
+    to execute malicious HTA files or inline scripts.
+  mitre_technique: T1218.005
+  mitre_tactic: Defense Evasion
+  severity: High
+  event_ids: [1]
+  logic: AND
+  conditions:
+    - field: image
+      operator: ends_with
+      value: "mshta.exe"
+
+- id: LOLBIN_RUNDLL32_SUSPICIOUS_001
+  name: Suspicious Rundll32 Execution
+  description: >
+    Detects rundll32.exe invoked with JavaScript protocol handler, shell32 execution
+    shims, or remote URLs — techniques used to execute arbitrary code via a trusted
+    Windows binary.
+    Phase 2B: Removed ".dll," from the match list. rundll32 syntax requires a DLL
+    entry-point argument in the form "dllname.dll,EntryPoint", so ".dll," is present
+    in EVERY legitimate rundll32 call (e.g. printui.dll,PrintUIEntry), making that
+    value useless as a detection signal and causing high false-positive rates.
+  mitre_technique: T1218.011
+  mitre_tactic: Defense Evasion
+  severity: High
+  event_ids: [1]
+  logic: AND
+  conditions:
+    - field: image
+      operator: ends_with
+      value: "rundll32.exe"
+    - field: command_line
+      operator: contains_any
+      values:
+        - "javascript:"              # JS protocol execution via rundll32 (T1218.011)
+        - "shell32.dll,ShellExec"    # ShellExecute shim — executes arbitrary programs
+        - "shell32.dll,Control_RunDLL"  # Launches control panel applets or arbitrary code
+        - "http://"                  # Remote DLL or script fetched over HTTP
+        - "https://"                 # Remote DLL or script fetched over HTTPS
+
+- id: LOLBIN_REGSVR32_001
+  name: Regsvr32 Remote Script Execution
+  description: >
+    Detects regsvr32.exe downloading and executing a remote script,
+    known as the Squiblydoo technique for bypassing application whitelisting.
+  mitre_technique: T1218.010
+  mitre_tactic: Defense Evasion
+  severity: High
+  event_ids: [1]
+  logic: AND
+  conditions:
+    - field: image
+      operator: ends_with
+      value: "regsvr32.exe"
+    - field: command_line
+      operator: contains_any
+      values:
+        - "/i:http"
+        - "/i:https"
+        - "/s /u /i"
+        - "scrobj.dll"
+
+- id: LOLBIN_CERTUTIL_001
+  name: Certutil File Download or Decode
+  description: >
+    Detects certutil.exe used to download files or decode Base64 content,
+    a known living-off-the-land technique for staging payloads.
+  mitre_technique: T1140
+  mitre_tactic: Defense Evasion
+  severity: Medium
+  event_ids: [1]
+  logic: AND
+  conditions:
+    - field: image
+      operator: ends_with
+      value: "certutil.exe"
+    - field: command_line
+      operator: contains_any
+      values:
+        - "-decode"
+        - "-decodehex"
+        - "-urlcache"
+        - "-f http"
+        - "-f https"
+
+- id: LOLBIN_MSIEXEC_REMOTE_001
+  name: Msiexec Remote Package Download and Execute
+  description: >
+    Detects msiexec.exe invoked with a remote URL as the install source.
+    The Windows Installer (msiexec) natively supports downloading and executing
+    MSI packages from HTTP/HTTPS/FTP URLs. Attackers use this to silently install
+    malicious MSI packages from attacker-controlled servers, bypassing application
+    whitelisting because msiexec is a trusted Windows binary. This technique is
+    used by APT10, FIN7, and commodity loaders. The /q or /qn flags (quiet mode)
+    are often combined to suppress user interaction, but the URL in the /i argument
+    is the primary detection signal.
+  mitre_technique: T1218.007
+  mitre_tactic: Defense Evasion
+  severity: High
+  event_ids: [1]
+  logic: AND
+  conditions:
+    - field: image
+      operator: ends_with
+      value: "msiexec.exe"
+    - field: command_line
+      operator: contains_any
+      values:
+        - "http://"
+        - "https://"
+        - "ftp://"
+        - "/i http"
+        - "/i ftp"
+        - "/package http"
+
+- id: LOLBIN_ODBCCONF_001
+  name: Odbcconf REGSVR DLL Registration Abuse
+  description: >
+    Detects odbcconf.exe used to load an arbitrary DLL via the REGSVR action.
+    odbcconf.exe is a legitimate ODBC configuration tool that accepts a /a flag
+    to perform named actions, including REGSVR which calls DllRegisterServer on
+    a specified DLL — identical in effect to regsvr32.exe. This is an alternative
+    AppControl bypass used when regsvr32.exe is blocked. Observed in FIN7 and
+    Cobalt Strike post-exploitation playbooks. The /a {REGSVR} or -a {REGSVR}
+    pattern is the specific invocation used for DLL loading abuse.
+  mitre_technique: T1218.008
+  mitre_tactic: Defense Evasion
+  severity: High
+  event_ids: [1]
+  logic: AND
+  conditions:
+    - field: image
+      operator: ends_with
+      value: "odbcconf.exe"
+    - field: command_line
+      operator: contains_any
+      values:
+        - "regsvr"
+        - "/a {"
+        - "-a {"
+        - "/f http"
+        - "/f ftp"
+
+- id: LOLBIN_CMSTP_001
+  name: CMSTP Execution for UAC Bypass or Code Execution
+  description: >
+    Detects any execution of cmstp.exe, the Microsoft Connection Manager Profile
+    Installer. CMSTP is used to bypass UAC (via auto-elevation) and execute
+    arbitrary DLLs or scripts specified in a .INF profile file. It is also used
+    to bypass AppLocker. In modern environments, CMSTP has no routine legitimate
+    administrative use — it is an extremely rare process in normal Windows
+    operation. Any execution of cmstp.exe in a detection environment warrants
+    investigation. Observed in MuddyWater, APT29, and various commodity toolkits.
+  mitre_technique: T1218.003
+  mitre_tactic: Defense Evasion
+  severity: High
+  event_ids: [1]
+  logic: AND
+  conditions:
+    - field: image
+      operator: ends_with
+      value: "cmstp.exe"
+
+- id: LOLBIN_HH_CHM_001
+  name: HTML Help Executable Remote or Script Execution
+  description: >
+    Detects hh.exe (Microsoft HTML Help) executing remote content or JavaScript.
+    hh.exe can be used to execute arbitrary JavaScript via the javascript: protocol
+    handler or to load remote CHM files from a URL, both of which can run arbitrary
+    code. The mk:@MSITStore: protocol is used to access CHM content and can be
+    abused to load scripts from remote sources. While hh.exe opening local .chm
+    documentation files is legitimate, the presence of a URL or JavaScript handler
+    in the command line is not. Observed in Lazarus Group and various APT campaigns
+    targeting enterprise users.
+  mitre_technique: T1218.001
+  mitre_tactic: Defense Evasion
+  severity: High
+  event_ids: [1]
+  logic: AND
+  conditions:
+    - field: image
+      operator: ends_with
+      value: "hh.exe"
+    - field: command_line
+      operator: contains_any
+      values:
+        - "http://"
+        - "https://"
+        - "javascript:"
+        - "mk:@msitstore:"
+        - "ftp://"
+
+- id: LOLBIN_REGASM_REGSVCS_001
+  name: Regasm or Regsvcs Execution for .NET Assembly Proxy
+  description: >
+    Detects execution of regasm.exe or regsvcs.exe, both .NET assembly registration
+    tools that call custom code during registration and unregistration. Attackers
+    supply a malicious .NET assembly — the registration/unregistration callbacks
+    (ComRegisterFunction / ComUnregisterFunction) execute arbitrary code without
+    requiring admin rights or triggering application whitelisting because these
+    are signed Microsoft binaries. Neither tool is used in routine day-to-day
+    Windows operation on endpoints. Any execution on a workstation is worth
+    investigating. Observed in various APT post-exploitation chains and penetration
+    testing frameworks.
+  mitre_technique: T1218.009
+  mitre_tactic: Defense Evasion
+  severity: High
+  event_ids: [1]
+  logic: AND
+  conditions:
+    - field: image
+      operator: ends_with_any
+      values:
+        - "regasm.exe"
+        - "regsvcs.exe"
+
+- id: LOLBIN_WMIC_PROCESS_001
+  name: WMIC Remote or Local Process Creation
+  description: >
+    Detects wmic.exe used to create processes, a common fileless execution and
+    lateral movement technique. "process call create" is the primary syntax for
+    spawning arbitrary processes via WMI using wmic.exe as the client. The /node:
+    flag specifies a remote target, indicating lateral movement via WMI. This
+    technique does not create a direct parent-child process relationship from the
+    perspective of the newly spawned process (its parent appears as WmiPrvSE.exe),
+    which is why it is favored for evading process-tree-based detections.
+    Observed in APT29, Lazarus, FIN7, and nearly every mature red team framework.
+  mitre_technique: T1047
+  mitre_tactic: Execution
+  severity: High
+  event_ids: [1]
+  logic: AND
+  conditions:
+    - field: image
+      operator: ends_with
+      value: "wmic.exe"
+    - field: command_line
+      operator: contains_any
+      values:
+        - "process call create"
+        - "call create"
+        - "process where"
+        - "/node:"
+        - "win32_process"
+
+- id: LOLBIN_BITSADMIN_001
+  name: BITSAdmin File Transfer for Payload Staging
+  description: >
+    Detects bitsadmin.exe used to initiate BITS file transfer jobs, a technique
+    for downloading payloads using the Background Intelligent Transfer Service
+    which survives reboots, bypasses many network controls, and leaves minimal
+    traces in standard process logs. The /transfer flag creates a one-off transfer
+    job; /addfile adds a file to an existing job. Both are the key actions in
+    payload staging. BITS downloads also run under svchost.exe context after
+    the job is created, further obscuring the origin. Observed in APT10, APT33,
+    and various commodity stagers.
+  mitre_technique: T1197
+  mitre_tactic: Defense Evasion
+  severity: Medium
+  event_ids: [1]
+  logic: AND
+  conditions:
+    - field: image
+      operator: ends_with
+      value: "bitsadmin.exe"
+    - field: command_line
+      operator: contains_any
+      values:
+        - "/transfer"
+        - "/addfile"
+        - "http://"
+        - "https://"
+        - "ftp://"
+
+- id: LOLBIN_INSTALLUTIL_001
+  name: InstallUtil AppControl Bypass Execution
+  description: >
+    Detects any execution of InstallUtil.exe, the .NET Framework installation
+    utility. InstallUtil executes the Install() and Uninstall() methods of a
+    supplied .NET assembly — these methods can contain arbitrary code. Because
+    InstallUtil.exe is a Microsoft-signed binary, it bypasses AppLocker and WDAC
+    rules that only block unsigned executables. It also does not require admin
+    rights. InstallUtil.exe has no routine use in normal endpoint operation and
+    is virtually never invoked by Windows itself or by standard application
+    installers. Any execution on a workstation is a strong indicator.
+    Observed in Red Team tooling, various APT post-exploitation chains.
+  mitre_technique: T1218.004
+  mitre_tactic: Defense Evasion
+  severity: High
+  event_ids: [1]
+  logic: AND
+  conditions:
+    - field: image
+      operator: ends_with
+      value: "installutil.exe"
+
+- id: LOLBIN_FORFILES_001
+  name: Forfiles Executing Arbitrary Commands via Shell Spawn
+  description: >
+    Detects forfiles.exe used to execute cmd.exe or PowerShell via its /c switch.
+    forfiles is a legitimate file-search utility but its /c parameter takes an
+    arbitrary command string that it executes for each matching file — effectively
+    acting as a process spawner. Attackers use it as a proxy to launch cmd.exe or
+    PowerShell with arguments that might be blocked at the shell level, providing
+    an additional layer of indirection. The "cmd" and "powershell" substrings in
+    the command_line are the execution signal — forfiles spawning these shells is
+    not a normal operational pattern.
+  mitre_technique: T1216
+  mitre_tactic: Defense Evasion
+  severity: Medium
+  event_ids: [1]
+  logic: AND
+  conditions:
+    - field: image
+      operator: ends_with
+      value: "forfiles.exe"
+    - field: command_line
+      operator: contains_any
+      values:
+        - "cmd"
+        - "powershell"
+        - "wscript"
+        - "cscript"
+        - "mshta"
+        - "/c cmd"
+        - "/c powershell"

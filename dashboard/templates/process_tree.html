@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% block title %}ShadowSensor — Process Tree{% endblock %}
+
+{% block page_title %}<h1>Process Tree</h1>{% endblock %}
+
+{% block content %}
+<div class="toolbar-row">
+  <button type="button" class="btn-secondary btn-sm"
+          hx-get="/dashboard/partials/process-tree-content"
+          hx-target="#tree-container"
+          hx-swap="innerHTML"
+          hx-include="#param-quick, #param-from, #param-to">
+    ⟳ Refresh
+  </button>
+  <span class="text-secondary" id="tree-meta">
+    {% if tree_data %}{{ tree_data.total_processes }} process{{ 'es' if tree_data.total_processes != 1 else '' }}{% endif %}
+  </span>
+</div>
+
+<div class="card">
+  <div id="tree-container">
+    {% include "partials/process_tree_content.html" %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function bindTreeToggles() {
+    document.querySelectorAll('.tree-toggle').forEach(function(btn) {
+        btn.onclick = function(e) {
+            e.stopPropagation();
+            const childUl = btn.parentElement.querySelector(':scope > ul');
+            if (!childUl) return;
+            const hidden = childUl.style.display === 'none';
+            childUl.style.display = hidden ? '' : 'none';
+            btn.textContent = hidden ? '▼' : '▶';
+        };
+    });
+}
+bindTreeToggles();
+
+document.body.addEventListener('htmx:afterSwap', function(evt) {
+    if (evt.detail.target.id === 'tree-container') bindTreeToggles();
+});
+
+TimeRange.onChange(function() {
+    htmx.ajax('GET', '/dashboard/partials/process-tree-content?' + TimeRange.getParams(),
+              { target: '#tree-container', swap: 'innerHTML' });
+});
+</script>
+{% endblock %}

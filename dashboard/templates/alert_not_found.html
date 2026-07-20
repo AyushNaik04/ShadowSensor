@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+
+{% block title %}ShadowSensor — Alert Not Found{% endblock %}
+
+{% block page_title %}<h1>Alert Not Found</h1>{% endblock %}
+
+{% block content %}
+<div class="not-found-wrapper card">
+  <h1>404</h1>
+  <p class="text-secondary">Alert #{{ alert_id }} was not found.</p>
+  <p style="margin-top:24px">
+    <a href="/dashboard/alerts" class="btn-secondary">&larr; Back to Alerts</a>
+  </p>
+</div>
+{% endblock %}

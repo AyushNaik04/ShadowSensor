@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+
+{% block title %}ShadowSensor — Alert Feed{% endblock %}
+
+{% block page_title %}<h1>Alert Feed</h1>{% endblock %}
+
+{% block content %}
+<div class="kql-bar-wrapper">
+  <input id="kql-input" type="text" class="kql-bar"
+         placeholder="severity:High AND status:open" autofocus>
+  <button type="button" onclick="submitKQL()" class="btn-primary">Search</button>
+  <button type="button" onclick="clearKQL()" class="btn-secondary" id="clear-btn" style="display:none">Clear</button>
+</div>
+<div id="kql-error" class="kql-error-msg" style="display:none"></div>
+<div class="results-meta">
+  <span id="results-count">{% if pagination %}{{ pagination.total }} alert{{ 's' if pagination.total != 1 else '' }}{% endif %}</span>
+</div>
+
+<div class="card">
+  <div class="table-scroll-wrapper">
+    <table class="data-table alerts-table">
+      <colgroup>
+        <col style="width: 13%">
+        <col style="width: 9%">
+        <col style="width: 21%">
+        <col style="width: 10%">
+        <col style="width: 18%">
+        <col style="width: 10%">
+        <col style="width: 19%">
+      </colgroup>
+      <thead>
+        <tr>
+          <th>Timestamp</th><th>Severity</th><th>Rule Name</th>
+          <th>MITRE</th><th>Process</th><th>Status</th><th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="alerts-table-body"
+             hx-get="/dashboard/partials/alerts-rows"
+             hx-trigger="every 3s [!document.getElementById('kql-input').value.trim()], load"
+             hx-swap="innerHTML"
+             hx-include="#kql-input, #page-num, #sev-filter, #status-filter, #param-quick, #param-from, #param-to">
+        {% include "partials/alerts_rows.html" %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="pagination" id="pagination-bar"></div>
+
+<input type="hidden" id="page-num" name="page" value="1">
+<input type="hidden" id="sev-filter" name="severity" value="">
+<input type="hidden" id="status-filter" name="status" value="">
+{% endblock %}
+
+{% block scripts %}
+<script>
+function buildAlertsUrl() {
+    const q = document.getElementById('kql-input').value.trim();
+    let url = '/dashboard/partials/alerts-rows?' + TimeRange.getParams();
+    if (q) url += '&q=' + encodeURIComponent(q);
+    const page = document.getElementById('page-num').value;
+    if (page) url += '&page=' + page;
+    return url;
+}
+
+async function updateAlertsMeta() {
+    const q = document.getElementById('kql-input').value.trim();
+    let url = '/api/v1/alerts?' + TimeRange.getParams() + '&page=' + (document.getElementById('page-num').value || 1);
+    if (q) url += '&q=' + encodeURIComponent(q);
+    try {
+        const res = await fetch(url);
+        if (!res.ok) {
+            const err = await res.json();
+            const errDiv = document.getElementById('kql-error');
+            if (errDiv && q) {
+                errDiv.textContent = err.detail || 'Search failed';
+                errDiv.style.display = '';
+            }
+            return;
+        }
+        document.getElementById('kql-error').style.display = 'none';
+        const data = await res.json();
+        document.getElementById('results-count').textContent =
+            data.total + ' alert' + (data.total !== 1 ? 's' : '');
+        renderPagination(data.page, data.pages, data.total);
+    } catch (e) { console.error('Meta update failed:', e); }
+}
+
+function renderPagination(page, pages, total) {
+    const bar = document.getElementById('pagination-bar');
+    if (!bar) return;
+    if (total === 0) { bar.innerHTML = ''; return; }
+    bar.innerHTML =
+        '<button type="button" class="btn-secondary btn-sm" ' + (page <= 1 ? 'disabled' : '') +
+        ' onclick="goToPage(' + (page - 1) + ')">Previous</button>' +
+        '<span class="pagination-info">Page ' + page + ' of ' + pages + '</span>' +
+        '<button type="button" class="btn-secondary btn-sm" ' + (page >= pages ? 'disabled' : '') +
+        ' onclick="goToPage(' + (page + 1) + ')">Next</button>';
+}
+
+function goToPage(p) {
+    if (p < 1) return;
+    document.getElementById('page-num').value = p;
+    submitKQL();
+}
+
+function submitKQL() {
+    const q = document.getElementById('kql-input').value.trim();
+    document.getElementById('clear-btn').style.display = q ? '' : 'none';
+    htmx.ajax('GET', buildAlertsUrl(), { target: '#alerts-table-body', swap: 'innerHTML' });
+    updateAlertsMeta();
+}
+
+function clearKQL() {
+    document.getElementById('kql-input').value = '';
+    document.getElementById('kql-error').style.display = 'none';
+    document.getElementById('clear-btn').style.display = 'none';
+    document.getElementById('page-num').value = '1';
+    htmx.ajax('GET', '/dashboard/partials/alerts-rows?' + TimeRange.getParams(),
+              { target: '#alerts-table-body', swap: 'innerHTML' });
+    updateAlertsMeta();
+}
+
+function reloadAlertsRows() {
+    htmx.ajax('GET', buildAlertsUrl(), { target: '#alerts-table-body', swap: 'innerHTML' });
+    updateAlertsMeta();
+}
+
+document.getElementById('kql-input').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') submitKQL();
+    if (e.key === 'Escape') clearKQL();
+});
+
+TimeRange.onChange(function() {
+    if (!document.getElementById('kql-input').value.trim()) {
+        htmx.ajax('GET', '/dashboard/partials/alerts-rows?' + TimeRange.getParams(),
+                  { target: '#alerts-table-body', swap: 'innerHTML' });
+        updateAlertsMeta();
+    }
+});
+
+document.body.addEventListener('htmx:afterSwap', function(evt) {
+    if (evt.detail.target.id === 'alerts-table-body') updateAlertsMeta();
+});
+
+{% if pagination %}renderPagination({{ pagination.page }}, {{ pagination.pages }}, {{ pagination.total }});{% endif %}
+</script>
+{% endblock %}

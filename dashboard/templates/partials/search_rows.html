@@ -1,0 +1,51 @@
+{% if items %}
+{% if context == 'alerts' %}
+{% for item in items %}
+<tr>
+  <td>{{ item.timestamp | format_ts }}</td>
+  <td><span class="badge badge-{{ item.severity | lower }}">{{ item.severity }}</span></td>
+  <td>
+    <a href="/dashboard/alerts/{{ item.id }}" class="alert-detail-link" title="{{ item.rule_name }}">{{ item.rule_name }}</a>
+  </td>
+  <td>
+    {% if item.mitre_technique %}
+    <a href="https://attack.mitre.org/techniques/{{ item.mitre_technique }}/" target="_blank" rel="noopener" class="mitre-link">{{ item.mitre_technique }}</a>
+    {% else %}—{% endif %}
+  </td>
+  <td>{{ item.process_image | basename }}</td>
+  <td><span class="badge badge-{{ item.status }}">{{ item.status }}</span></td>
+</tr>
+{% endfor %}
+{% elif context == 'events' %}
+{% for item in items %}
+<tr>
+  <td>{{ item.timestamp | format_ts }}</td>
+  <td><span class="badge badge-event">{{ item.event_type_id }}</span></td>
+  <td>{{ item.pid if item.pid is not none else '—' }}</td>
+  <td>{{ item.image | basename }}</td>
+  <td>{{ item | event_key_detail }}</td>
+</tr>
+{% endfor %}
+{% else %}
+{% for item in items %}
+<tr>
+  <td>{{ item.timestamp | format_ts }}</td>
+  <td>{{ item.rule_name }}</td>
+  <td><span class="badge badge-{{ item.severity | lower }}">{{ item.severity }}</span></td>
+  <td>
+    {% if item.mitre_technique %}
+    <a href="https://attack.mitre.org/techniques/{{ item.mitre_technique }}/" target="_blank" rel="noopener" class="mitre-link">{{ item.mitre_technique }}</a>
+    {% else %}—{% endif %}
+  </td>
+</tr>
+{% endfor %}
+{% endif %}
+{% else %}
+{% if context == 'alerts' %}
+<tr><td colspan="6" class="empty-state">No alerts match this query</td></tr>
+{% elif context == 'events' %}
+<tr><td colspan="5" class="empty-state">No events match this query</td></tr>
+{% else %}
+<tr><td colspan="4" class="empty-state">No rule hits match this query</td></tr>
+{% endif %}
+{% endif %}

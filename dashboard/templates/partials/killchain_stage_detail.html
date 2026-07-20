@@ -1,0 +1,55 @@
+<div class="killchain-detail-panel">
+  <div class="killchain-detail-header">
+    <span class="killchain-detail-title">{{ tactic_name }} — Active Rules</span>
+    <button class="killchain-collapse-btn"
+            onclick="document.getElementById('stage-detail-{{ tactic_id }}').innerHTML = ''">
+      &#8593; Collapse
+    </button>
+  </div>
+
+  {% if rule_details %}
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Rule ID</th>
+        <th>Technique</th>
+        <th>Hit Count</th>
+        <th>Last Seen</th>
+        <th>View Alerts</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for rule in rule_details %}
+      <tr>
+        <td>
+          <code>{{ rule.rule_id }}</code>
+        </td>
+        <td>
+          {% if rule.technique_id %}
+            {{ rule.technique_id }}{% if rule.technique_name %} — {{ rule.technique_name }}{% endif %}
+          {% else %}
+            —
+          {% endif %}
+        </td>
+        <td class="killchain-detail-count">
+          <span class="killchain-badge">{{ rule.hit_count }}</span>
+        </td>
+        <td class="killchain-detail-lastseen">
+          {{ format_relative_time(rule.last_seen) }}
+        </td>
+        <td>
+          <a href="/dashboard/alerts?q=rule_name:{{ rule.rule_id }}"
+             class="killchain-alert-link">
+            View in Alert Feed &#8594;
+          </a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="killchain-detail-empty">
+    No rules have fired for this tactic in the selected time window.
+  </p>
+  {% endif %}
+</div>

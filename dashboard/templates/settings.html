@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% block title %}ShadowSensor — Settings{% endblock %}
+
+{% block page_title %}<h1>Settings</h1>{% endblock %}
+
+{% block content %}
+<div class="settings-grid">
+
+  <div class="card">
+    <h3 class="card-title">Service Status</h3>
+    <div id="health-data"
+         hx-get="/dashboard/partials/health"
+         hx-trigger="load"
+         hx-swap="innerHTML">
+      <span class="text-muted">Loading…</span>
+    </div>
+    <button type="button"
+            hx-get="/dashboard/partials/health"
+            hx-target="#health-data"
+            hx-swap="innerHTML"
+            class="btn-secondary btn-sm settings-refresh-btn">
+      ⟳ Refresh
+    </button>
+  </div>
+
+  <div class="card">
+    <h3 class="card-title">Appearance</h3>
+    <div class="settings-row">
+      <span>Theme</span>
+      <div class="settings-row-right">
+        <span id="current-theme-label" class="text-secondary">Dark</span>
+        <button type="button" onclick="toggleTheme(); updateThemeLabel();" class="btn-secondary">
+          <span class="theme-icon-settings">☀</span> Toggle Theme
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3 class="card-title">Data</h3>
+    <dl class="settings-list">
+      <dt>Database location</dt>
+      <dd><code>data/shadowsensor.db</code></dd>
+    </dl>
+    <div class="notice-block">
+      No configuration editing is available in this version.
+      Rule tuning and process exclusions will be available in a future release.
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function updateThemeLabel() {
+    var theme = document.documentElement.getAttribute('data-theme') || 'dark';
+    var label = document.getElementById('current-theme-label');
+    if (label) label.textContent = theme.charAt(0).toUpperCase() + theme.slice(1);
+    var icon = document.querySelector('.theme-icon-settings');
+    if (icon) icon.textContent = theme === 'dark' ? '☀' : '☾';
+}
+updateThemeLabel();
+</script>
+{% endblock %}

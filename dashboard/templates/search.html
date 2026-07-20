@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+
+{% block title %}ShadowSensor — Query Console{% endblock %}
+
+{% block page_title %}<h1>Query Console</h1>{% endblock %}
+
+{% block content %}
+<div class="search-bar-row">
+  <input id="kql-input" type="text" class="kql-bar kql-bar--large"
+         placeholder="severity:High AND mitre_technique:T1059*"
+         autofocus list="kql-history">
+  <datalist id="kql-history"></datalist>
+  <select id="search-context" class="context-select">
+    <option value="alerts">Alerts</option>
+    <option value="events">Events</option>
+    <option value="rule_hits">Rule Hits</option>
+  </select>
+  <button type="button" onclick="runSearch()" class="btn-primary">Search</button>
+  <label class="auto-refresh-label">
+    <input type="checkbox" id="auto-refresh-toggle"> Auto-refresh (3s)
+  </label>
+</div>
+<div id="kql-error" class="kql-error-msg" style="display:none"></div>
+<div id="results-header" class="results-meta">Enter a query to search</div>
+
+<div class="card">
+  <table class="data-table">
+    <thead id="results-thead">
+      <tr>
+        <th>Timestamp</th><th>Severity</th><th>Rule Name</th>
+        <th>MITRE</th><th>Process</th><th>Status</th>
+      </tr>
+    </thead>
+    <tbody id="search-results-body"
+           hx-get="/dashboard/partials/search-rows"
+           hx-trigger="none"
+           hx-swap="innerHTML"></tbody>
+  </table>
+</div>
+<div class="pagination" id="search-pagination"></div>
+<input type="hidden" id="search-page" value="1">
+{% endblock %}
+
+{% block scripts %}
+<script>
+const SEARCH_HEADERS = {
+    alerts: ['Timestamp', 'Severity', 'Rule Name', 'MITRE', 'Process', 'Status'],
+    events: ['Timestamp', 'Event Type', 'PID', 'Image', 'Key Detail'],
+    rule_hits: ['Timestamp', 'Rule Name', 'Severity', 'MITRE'],
+};
+
+function updateSearchThead(ctx) {
+    const headers = SEARCH_HEADERS[ctx] || SEARCH_HEADERS.alerts;
+    document.getElementById('results-thead').innerHTML =
+        '<tr>' + headers.map(function(h) { return '<th>' + h + '</th>'; }).join('') + '</tr>';
+}
+
+function loadHistory() {
+    var h = JSON.parse(localStorage.getItem('shadowsensor-kql-history') || '[]');
+    var dl = document.getElementById('kql-history');
+    dl.innerHTML = h.map(function(q) {
+        return '<option value="' + q.replace(/"/g, '&quot;') + '">';
+    }).join('');
+}
+
+function saveHistory(q) {
+    var h = JSON.parse(localStorage.getItem('shadowsensor-kql-history') || '[]');
+    h = [q].concat(h.filter(function(x) { return x !== q; })).slice(0, 10);
+    localStorage.setItem('shadowsensor-kql-history', JSON.stringify(h));
+    loadHistory();
+}
+
+function renderSearchPagination(page, pages, total) {
+    var bar = document.getElementById('search-pagination');
+    if (!bar) return;
+    if (total === 0) { bar.innerHTML = ''; return; }
+    bar.innerHTML =
+        '<button type="button" class="btn-secondary btn-sm" ' + (page <= 1 ? 'disabled' : '') +
+        ' onclick="runSearch(' + (page - 1) + ')">Previous</button>' +
+        '<span class="pagination-info">Page ' + page + ' of ' + pages + '</span>' +
+        '<button type="button" class="btn-secondary btn-sm" ' + (page >= pages ? 'disabled' : '') +
+        ' onclick="runSearch(' + (page + 1) + ')">Next</button>';
+}
+
+async function runSearch(page) {
+    page = page || 1;
+    var q = document.getElementById('kql-input').value.trim();
+    if (!q) return;
+    var ctx = document.getElementById('search-context').value;
+    document.getElementById('search-page').value = page;
+    updateSearchThead(ctx);
+    var params = 'q=' + encodeURIComponent(q) + '&context=' + ctx + '&' + TimeRange.getParams() + '&page=' + page;
+    var t0 = performance.now();
+    var res = await fetch('/api/v1/search?' + params);
+    var ms = Math.round(performance.now() - t0);
+    var errDiv = document.getElementById('kql-error');
+    if (!res.ok) {
+        var err = await res.json();
+        errDiv.textContent = err.detail || 'Search failed';
+        errDiv.style.display = '';
+        return;
+    }
+    errDiv.style.display = 'none';
+    var data = await res.json();
+    document.getElementById('results-header').textContent =
+        data.total + ' result' + (data.total !== 1 ? 's' : '') + ' (' + ms + 'ms)';
+    saveHistory(q);
+    renderSearchPagination(data.page, data.pages, data.total);
+    htmx.ajax('GET', '/dashboard/partials/search-rows?' + params,
+              { target: '#search-results-body', swap: 'innerHTML' });
+}
+
+document.getElementById('kql-input').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') runSearch();
+    if (e.key === 'Escape') {
+        document.getElementById('kql-input').value = '';
+        document.getElementById('kql-error').style.display = 'none';
+    }
+});
+
+document.getElementById('search-context').addEventListener('change', function() {
+    updateSearchThead(this.value);
+    if (document.getElementById('kql-input').value.trim()) runSearch();
+});
+
+var _autoRefreshInterval = null;
+document.getElementById('auto-refresh-toggle').addEventListener('change', function() {
+    if (this.checked) {
+        _autoRefreshInterval = setInterval(function() { runSearch(parseInt(document.getElementById('search-page').value, 10) || 1); }, 3000);
+    } else {
+        clearInterval(_autoRefreshInterval);
+        _autoRefreshInterval = null;
+    }
+});
+
+TimeRange.onChange(function() {
+    if (document.getElementById('kql-input').value.trim()) runSearch();
+});
+
+loadHistory();
+updateSearchThead('alerts');
+</script>
+{% endblock %}

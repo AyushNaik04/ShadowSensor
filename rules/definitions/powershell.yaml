@@ -1,0 +1,348 @@
+- id: PS_ENCODED_CMD_001
+  name: PowerShell Encoded Command
+  description: >
+    Detects PowerShell launched with a Base64-encoded command argument,
+    a common technique to obfuscate fileless payloads.
+  mitre_technique: T1059.001
+  mitre_tactic: Execution
+  severity: High
+  event_ids: [1]
+  logic: AND
+  conditions:
+    - field: image
+      operator: ends_with
+      value: "powershell.exe"
+    - field: command_line
+      operator: contains_any
+      values:
+        - "-EncodedCommand"
+        - "-enc "
+        - "-ec "
+
+- id: PS_DOWNLOAD_CRADLE_001
+  name: PowerShell Download Cradle
+  description: >
+    Detects PowerShell downloading and executing content from the network,
+    a hallmark of fileless staging techniques.
+    Phase 2B hardening (multi-condition redesign):
+    Added parent_image exclusion for known-benign interactive and system-management
+    parents.  The false-positive source was legitimate admin scripts ("curl",
+    "wget", "iwr" as PowerShell aliases) launched interactively from explorer.exe
+    or via scheduled tasks / system services (taskeng, taskhostw, svchost).
+    Attackers launching download cradles typically do so from cmd.exe (phishing
+    execution chain), a script host (caught separately by CHAIN_SCRIPT_HOST_*
+    rules), or directly from a staged binary — not from a user's desktop shell.
+    allow_null: true on parent_image means an absent parent (unusual in itself)
+    does NOT suppress the rule — unknown lineage is treated as suspicious.
+    Before/after: old rule fired on ANY powershell.exe with a download alias or
+    method name in the command line (4 benign false positives from admin scripts
+    run from explorer.exe).  New rule additionally requires the parent process to
+    be outside the known-benign set.
+  mitre_technique: T1059.001
+  mitre_tactic: Execution
+  severity: High
+  event_ids: [1]
+  logic: AND
+  conditions:
+    - field: image
+      operator: ends_with
+      value: "powershell.exe"
+    - field: command_line
+      operator: contains_any
+      values:
+        - "DownloadString"
+        - "DownloadFile"
+        - "WebClient"
+        - "Invoke-WebRequest"
+        - "iwr "
+        - "curl "
+        - "wget "
+    - field: parent_image
+      operator: not_contains_any
+      allow_null: true   # unknown parent = suspicious lineage → rule fires
+      values:
+        - "explorer.exe"    # user interactive (Start menu / Run dialog)
+        - "taskeng.exe"     # Windows 7 Task Scheduler engine
+        - "taskhostw.exe"   # Windows 10+ Task Host (scheduled tasks)
+        - "svchost.exe"     # service-hosted processes (WSUS, SCCM, Windows Update)
+
+- id: PS_AMSI_BYPASS_001
+  name: PowerShell AMSI Bypass Attempt
+  description: >
+    Detects a PowerShell command line referencing AMSI internals,
+    indicating an attempt to disable the Antimalware Scan Interface.
+  mitre_technique: T1562.001
+  mitre_tactic: Defense Evasion
+  severity: High
+  event_ids: [1]
+  logic: AND
+  conditions:
+    - field: image
+      operator: ends_with
+      value: "powershell.exe"
+    - field: command_line
+      operator: contains_any
+      values:
+        - "amsiInitFailed"
+        - "AmsiScanBuffer"
+        - "AmsiUtils"
+        - "amsi.dll"
+
+- id: PS_HIDDEN_WINDOW_001
+  name: PowerShell Hidden Window
+  description: >
+    Detects PowerShell launched with a hidden window style,
+    commonly used to suppress visible console activity during fileless execution.
+    Phase 2B hardening (multi-condition redesign):
+    Added parent_image exclusion for Windows Task Scheduler parents.  Legitimate
+    scheduled tasks routinely pass -WindowStyle Hidden (or its short forms) to
+    suppress console pop-ups; the parent in that case is the Task Scheduler
+    engine (taskeng.exe on Windows 7, taskhostw.exe / svchost.exe on Windows 10+).
+    Excluding these known-scheduler parents eliminates the benign noise while
+    preserving the signal for genuinely suspicious hidden-window launches —
+    phishing chains that spawn PowerShell from cmd.exe, a script host, or a
+    downloaded binary — none of which use the Task Scheduler as a parent.
+    allow_null: true on parent_image preserves the alert for unknown lineage.
+    Before/after: old rule fired on ANY powershell.exe with -WindowStyle Hidden
+    regardless of parent (2 benign false positives from scheduled backup/cleanup
+    tasks).  New rule additionally requires a non-scheduler parent.
+  mitre_technique: T1059.001
+  mitre_tactic: Execution
+  severity: Medium
+  event_ids: [1]
+  logic: AND
+  conditions:
+    - field: image
+      operator: ends_with
+      value: "powershell.exe"
+    - field: command_line
+      operator: contains_any
+      values:
+        - "-WindowStyle Hidden"
+        - "-W Hidden"
+        - "-WindowStyle H"
+    - field: parent_image
+      operator: not_contains_any
+      allow_null: true   # unknown parent → suspicious → rule fires
+      values:
+        - "taskeng.exe"     # Windows 7 Task Scheduler engine
+        - "taskhostw.exe"   # Windows 10+ Task Host
+        - "svchost.exe"     # svchost hosting the Task Scheduler service
+
+- id: PS_EXECUTION_POLICY_BYPASS_001
+  name: PowerShell Execution Policy Bypass
+  description: >
+    Detects PowerShell launched with explicit execution policy bypass flags.
+    Bypassing execution policy is a near-universal precursor in phishing-chain
+    PowerShell execution — legitimate administrative scripts typically run under
+    their own signed policy rather than disabling it wholesale. The flags detected
+    here (-ExecutionPolicy Bypass, -ep bypass, -ExecutionPolicy Unrestricted) are
+    the most commonly observed forms across commodity phishing loaders, Emotet,
+    QBot, and similar families. Severity Medium because bypass alone without a
+    download or obfuscation flag is not independently conclusive.
+  mitre_technique: T1059.001
+  mitre_tactic: Execution
+  severity: Medium
+  event_ids: [1]
+  logic: AND
+  conditions:
+    - field: image
+      operator: ends_with
+      value: "powershell.exe"
+    - field: command_line
+      operator: contains_any
+      values:
+        - "-executionpolicy bypass"
+        - "-ep bypass"
+        - "-executionpolicy unrestricted"
+
+- id: PS_INVOKE_EXPRESSION_001
+  name: PowerShell Invoke-Expression with Encoded or Downloaded Content
+  description: >
+    Detects PowerShell using Invoke-Expression (IEX) combined with download or
+    decode functions — the core execution pattern for fileless staging. IEX alone
+    is too broad (present in many legitimate scripts); requiring co-occurrence with
+    a download or base64-decode function eliminates most benign uses and isolates
+    the attack pattern. Emotet, TrickBot, and virtually every commodity PowerShell
+    loader use this IEX + download/decode combination to execute in-memory payloads.
+    Two separate contains_any conditions on command_line are ANDed together by the
+    engine: both must be satisfied.
+  mitre_technique: T1059.001
+  mitre_tactic: Execution
+  severity: High
+  event_ids: [1]
+  logic: AND
+  conditions:
+    - field: image
+      operator: ends_with
+      value: "powershell.exe"
+    - field: command_line
+      operator: contains_any
+      values:
+        - "invoke-expression"
+        - "iex("
+        - "iex ("
+        - "|iex"
+        - "| iex"
+        - ".invoke()"
+    - field: command_line
+      operator: contains_any
+      values:
+        - "frombase64string"
+        - "downloadstring"
+        - "net.webclient"
+        - "webclient"
+        - "downloadfile"
+        - "net.sockets"
+        - "[char[]"
+
+- id: PS_VERSION_DOWNGRADE_001
+  name: PowerShell Version 2 Downgrade Attack
+  description: >
+    Detects PowerShell launched explicitly as version 2 via the -Version flag.
+    PowerShell v2 predates Script Block Logging (PSv3+), AMSI, and Constrained
+    Language Mode. Attackers explicitly request v2 to execute arbitrary code with
+    no telemetry from modern defensive features. This is a deliberate anti-forensic
+    technique observed in Cobalt Strike post-exploitation, Empire, and other
+    frameworks when operating on systems where PSv2 is still installed. Legitimate
+    software does not downgrade PowerShell versions at runtime.
+  mitre_technique: T1059.001
+  mitre_tactic: Defense Evasion
+  severity: High
+  event_ids: [1]
+  logic: AND
+  conditions:
+    - field: image
+      operator: ends_with
+      value: "powershell.exe"
+    - field: command_line
+      operator: contains_any
+      values:
+        - "-version 2"
+        - "-version 2.0"
+        - "-v 2"
+        - "-ve 2"
+
+- id: PS_REFLECTIVE_ASSEMBLY_001
+  name: PowerShell Reflective Assembly Loading
+  description: >
+    Detects PowerShell using .NET Reflection to load assemblies directly into
+    memory without touching disk. [System.Reflection.Assembly]::Load() accepts a
+    raw byte array, enabling a PE or .NET assembly previously downloaded into a
+    variable to be loaded and executed entirely in memory. This is the core
+    mechanism behind PowerSploit's Invoke-ReflectivePEInjection, Invoke-Shellcode,
+    and similar tools. Observed extensively in Cobalt Strike's powershell-import
+    command and in FIN7/Carbanak staged payload delivery. LoadWithPartialName
+    is an older reflection variant still used by some commodity loaders.
+  mitre_technique: T1620
+  mitre_tactic: Defense Evasion
+  severity: High
+  event_ids: [1]
+  logic: AND
+  conditions:
+    - field: image
+      operator: ends_with
+      value: "powershell.exe"
+    - field: command_line
+      operator: contains_any
+      values:
+        - "[system.reflection.assembly]::load"
+        - "[reflection.assembly]::load"
+        - "[reflection.assembly]::loadfile"
+        - "assembly]::loadfrom"
+        - "loadwithpartialname"
+        - "[system.reflection.assembly]::loadfile"
+
+- id: PS_CREDENTIAL_ACCESS_001
+  name: PowerShell Credential Dumping Tool Signatures
+  description: >
+    Detects PowerShell command lines containing credential-dumping tool signatures
+    or keywords. Invoke-Mimikatz is a direct PowerShell port of Mimikatz embedded
+    in memory. sekurlsa and lsadump are Mimikatz module names used for credential
+    extraction from LSASS. Out-Minidump creates a minidump of LSASS for offline
+    extraction. Get-PassHashes and Invoke-CredentialInjection are PowerSploit
+    functions. Invoke-DCSync triggers a domain controller replication to pull
+    password hashes without touching LSASS directly. These signatures are specific
+    enough that false positives are negligible in any environment where legitimate
+    credential audit tools are not in use.
+  mitre_technique: T1003.001
+  mitre_tactic: Credential Access
+  severity: Critical
+  event_ids: [1]
+  logic: AND
+  conditions:
+    - field: image
+      operator: ends_with
+      value: "powershell.exe"
+    - field: command_line
+      operator: contains_any
+      values:
+        - "invoke-mimikatz"
+        - "sekurlsa"
+        - "lsadump"
+        - "out-minidump"
+        - "get-passhashes"
+        - "invoke-credentialinjection"
+        - "mimikatz"
+        - "privilege::debug"
+        - "invoke-dcsync"
+        - "dumpcreds"
+
+- id: PS_CONSTRAINED_LANG_BYPASS_001
+  name: PowerShell Constrained Language Mode Bypass via Environment Variable
+  description: >
+    Detects PowerShell referencing the __PSLockdownPolicy environment variable,
+    which controls whether PowerShell runs in Constrained Language Mode (CLM).
+    CLM blocks access to .NET types, COM objects, and reflection — setting this
+    variable to "0" or clearing it disables CLM, allowing unrestricted execution.
+    This technique is used to circumvent AppLocker and WDAC policies that enforce
+    CLM. The variable name __PSLockdownPolicy is highly specific: it exists
+    exclusively to control CLM enforcement and has no legitimate runtime reference
+    outside of policy management tooling.
+  mitre_technique: T1562.001
+  mitre_tactic: Defense Evasion
+  severity: High
+  event_ids: [1]
+  logic: AND
+  conditions:
+    - field: image
+      operator: ends_with
+      value: "powershell.exe"
+    - field: command_line
+      operator: contains_any
+      values:
+        - "__pslockdownpolicy"
+        - "pslockdownpolicy"
+
+- id: PS_WMI_EXEC_001
+  name: PowerShell WMI-Based Process Execution
+  description: >
+    Detects PowerShell invoking Windows Management Instrumentation (WMI) for
+    process creation or lateral movement. WMI is heavily used in fileless attack
+    chains because it creates processes without a direct parent-child relationship
+    visible in process creation telemetry, and its history is not retained in
+    standard PowerShell logging. Win32_Process is the WMI class used to spawn
+    arbitrary processes. Invoke-WmiMethod and Get-WmiObject wrapping Win32_Process
+    are the primary patterns. The /node: pattern indicates remote WMI execution
+    against another host. Observed in APT29, FIN7, and nearly all fileless lateral
+    movement frameworks.
+  mitre_technique: T1047
+  mitre_tactic: Execution
+  severity: High
+  event_ids: [1]
+  logic: AND
+  conditions:
+    - field: image
+      operator: ends_with
+      value: "powershell.exe"
+    - field: command_line
+      operator: contains_any
+      values:
+        - "win32_process"
+        - "invoke-wmimethod"
+        - "get-wmiobject"
+        - "gwmi"
+        - "new-object system.management"
+        - "managementobject"
+        - "[wmiclass]"
+        - "wmic"

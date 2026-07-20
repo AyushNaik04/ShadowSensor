@@ -1,0 +1,49 @@
+// ShadowSensor KQL-style query grammar — LALR(1) via lark
+// Supports: field:value, field:wildcard*, field:[A TO B], AND/OR/NOT, parentheses
+
+?start: expr
+
+?expr: or_expr
+
+?or_expr: and_expr
+        | or_expr OR and_expr       -> or_node
+
+?and_expr: not_expr
+         | and_expr AND not_expr    -> and_node
+         | and_expr not_expr        -> and_node
+
+?not_expr: primary
+         | NOT not_expr             -> not_node
+
+?primary: "(" expr ")"
+        | comparison
+
+comparison: FIELD_NAME ":" value    -> comparison
+
+?value: quoted_value
+      | range_value
+      | wildcard_value
+      | plain_value
+
+quoted_value:   ESCAPED_STRING              -> quoted
+range_value:    "[" bound TO bound "]"      -> range_val
+wildcard_value: WILDCARD_WORD               -> wildcard
+plain_value:    PLAIN_WORD                  -> plain
+
+bound: PLAIN_WORD | "*"
+
+OR.4:  /[oO][rR](?=[\s)]|$)/
+AND.4: /[aA][nN][dD](?=[\s)]|$)/
+NOT.4: /[nN][oO][tT](?=[\s(]|$)/
+TO.4:  /[tT][oO](?=\s)/
+
+// WILDCARD_WORD: must contain at least one * or ? — priority 2 wins over PLAIN_WORD
+WILDCARD_WORD.2: /[^\s"()\[\]:]*[*?][^\s"()\[\]:']*/
+// PLAIN_WORD: fallback for tokens with no wildcard chars
+PLAIN_WORD.1:   /[^\s"()\[\]:]+/
+// FIELD_NAME: dotted identifiers like process_image or mitre_technique
+FIELD_NAME:     /[a-zA-Z_][a-zA-Z0-9_.]+/
+
+%import common.ESCAPED_STRING
+%import common.WS
+%ignore WS

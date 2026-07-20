@@ -1,0 +1,307 @@
+- id: CHAIN_OFFICE_POWERSHELL_001
+  name: Office Application Spawning PowerShell
+  description: >
+    Detects a Microsoft Office application launching PowerShell,
+    a high-confidence indicator of macro-based fileless execution.
+  mitre_technique: T1566.001
+  mitre_tactic: Initial Access
+  severity: High
+  event_ids: [1]
+  logic: AND
+  conditions:
+    - field: parent_image
+      operator: contains_any
+      values:
+        - "winword.exe"
+        - "excel.exe"
+        - "powerpnt.exe"
+        - "outlook.exe"
+        - "onenote.exe"
+    - field: image
+      operator: ends_with
+      value: "powershell.exe"
+
+- id: CHAIN_OFFICE_CMD_001
+  name: Office Application Spawning CMD
+  description: >
+    Detects a Microsoft Office application launching cmd.exe,
+    indicating potential macro-based command execution.
+  mitre_technique: T1566.001
+  mitre_tactic: Initial Access
+  severity: High
+  event_ids: [1]
+  logic: AND
+  conditions:
+    - field: parent_image
+      operator: contains_any
+      values:
+        - "winword.exe"
+        - "excel.exe"
+        - "powerpnt.exe"
+        - "outlook.exe"
+        - "onenote.exe"
+    - field: image
+      operator: ends_with
+      value: "cmd.exe"
+
+- id: CHAIN_SCRIPT_HOST_CMD_001
+  name: Script Host Spawning CMD
+  description: >
+    Detects wscript.exe or cscript.exe launching cmd.exe,
+    a common parent-child pattern in script-based fileless techniques.
+  mitre_technique: T1059.005
+  mitre_tactic: Execution
+  severity: High
+  event_ids: [1]
+  logic: AND
+  conditions:
+    - field: parent_image
+      operator: contains_any
+      values:
+        - "wscript.exe"
+        - "cscript.exe"
+    - field: image
+      operator: ends_with
+      value: "cmd.exe"
+
+- id: CHAIN_SCRIPT_HOST_POWERSHELL_001
+  name: Script Host Spawning PowerShell
+  description: >
+    Detects wscript.exe or cscript.exe launching powershell.exe,
+    a parent-child chain associated with script-based fileless execution.
+  mitre_technique: T1059.005
+  mitre_tactic: Execution
+  severity: High
+  event_ids: [1]
+  logic: AND
+  conditions:
+    - field: parent_image
+      operator: contains_any
+      values:
+        - "wscript.exe"
+        - "cscript.exe"
+    - field: image
+      operator: ends_with
+      value: "powershell.exe"
+
+- id: CHAIN_BROWSER_SHELL_001
+  name: Browser Spawning Shell or Script Host Process
+  description: >
+    Detects a web browser spawning a command shell (cmd.exe, PowerShell) or
+    scripting host (wscript, cscript, mshta). This is the process-tree signature
+    of a successful drive-by download, browser exploit, or malicious web content
+    execution. Browsers have no legitimate operational reason to spawn interactive
+    shells or scripting engines — their plugin architecture operates through browser-
+    managed child processes (renderer, GPU, utility workers) which share the browser's
+    own image name. When a browser spawns cmd.exe or PowerShell it has been
+    instrumented to execute attacker-controlled code. Observed in drive-by campaigns,
+    watering hole attacks, and malvertising chains targeting Chrome and Edge.
+  mitre_technique: T1059.001
+  mitre_tactic: Execution
+  severity: High
+  event_ids: [1]
+  logic: AND
+  conditions:
+    - field: parent_image
+      operator: contains_any
+      values:
+        - "chrome.exe"
+        - "msedge.exe"
+        - "firefox.exe"
+        - "iexplore.exe"
+        - "brave.exe"
+        - "opera.exe"
+        - "microsoftedge.exe"
+    - field: image
+      operator: ends_with_any
+      values:
+        - "cmd.exe"
+        - "powershell.exe"
+        - "wscript.exe"
+        - "cscript.exe"
+        - "mshta.exe"
+
+- id: CHAIN_OFFICE_WSCRIPT_001
+  name: Office Application Spawning Script Host
+  description: >
+    Detects a Microsoft Office application spawning wscript.exe or cscript.exe.
+    While CHAIN_OFFICE_POWERSHELL_001 and CHAIN_OFFICE_CMD_001 catch the most
+    common macro-to-shell chains, VBA macros can also launch VBScript or JScript
+    payloads via wscript or cscript for an additional layer of indirection. This
+    is a supplementary parent-child rule that closes the gap between the existing
+    Office-shell rules. The resulting wscript/cscript process may then initiate
+    downloads or spawn further children, correlating with NET_SCRIPTING_ENGINE_HTTP_001
+    and CHAIN_SCRIPT_HOST_* rules. Observed in macro-based commodity loaders and
+    spear-phishing campaigns where a .vbs dropper is written and executed by the macro.
+  mitre_technique: T1059.005
+  mitre_tactic: Execution
+  severity: High
+  event_ids: [1]
+  logic: AND
+  conditions:
+    - field: parent_image
+      operator: contains_any
+      values:
+        - "winword.exe"
+        - "excel.exe"
+        - "powerpnt.exe"
+        - "outlook.exe"
+        - "onenote.exe"
+    - field: image
+      operator: ends_with_any
+      values:
+        - "wscript.exe"
+        - "cscript.exe"
+
+- id: CHAIN_REGSVR32_CHILD_001
+  name: Regsvr32 Spawning Shell or Script Process
+  description: >
+    Detects regsvr32.exe spawning a command shell or scripting host as a child
+    process. When regsvr32 successfully executes a malicious COM scriptlet (the
+    Squiblydoo technique, T1218.010), the scriptlet can spawn further processes
+    as children of regsvr32.exe. This parent-child chain is the process-tree
+    indicator that the Squiblydoo execution reached its second stage. Combined
+    with LOLBIN_REGSVR32_001 (which fires on the initial regsvr32 invocation),
+    this rule provides a two-stage corroboration: initial LOLBin use → confirmed
+    secondary execution. Observed in multiple APT campaigns and commodity
+    downloaders using scriptlet-based payloads.
+  mitre_technique: T1218.010
+  mitre_tactic: Defense Evasion
+  severity: High
+  event_ids: [1]
+  logic: AND
+  conditions:
+    - field: parent_image
+      operator: ends_with
+      value: "regsvr32.exe"
+    - field: image
+      operator: ends_with_any
+      values:
+        - "cmd.exe"
+        - "powershell.exe"
+        - "wscript.exe"
+        - "mshta.exe"
+        - "cscript.exe"
+
+- id: CHAIN_SCHEDULED_TASK_SCRIPT_001
+  name: Scheduled Task Host Spawning Script with Network or Execution Markers
+  description: >
+    Detects a Windows Task Scheduler host process (taskeng.exe, taskhostw.exe,
+    or schtasks.exe) spawning a scripting host that also carries a suspicious
+    command line — specifically network access, encoded content, or in-memory
+    execution keywords. Scheduled task execution of scripts is legitimate;
+    scheduled task execution of scripts that reach out to the network or decode
+    content at runtime is not. The command_line condition filters out the
+    legitimate scheduled maintenance tasks (which do not need to download
+    content) while preserving the signal for attacker-created persistence tasks.
+    Observed in Emotet, QBot, and other families that install scheduled tasks
+    as their primary persistence mechanism.
+  mitre_technique: T1053.005
+  mitre_tactic: Persistence
+  severity: Medium
+  event_ids: [1]
+  logic: AND
+  conditions:
+    - field: parent_image
+      operator: contains_any
+      values:
+        - "taskeng.exe"
+        - "taskhostw.exe"
+        - "schtasks.exe"
+    - field: image
+      operator: ends_with_any
+      values:
+        - "powershell.exe"
+        - "wscript.exe"
+        - "cscript.exe"
+        - "mshta.exe"
+    - field: command_line
+      operator: contains_any
+      values:
+        - "http://"
+        - "https://"
+        - "-enc"
+        - "-encoded"
+        - "downloadstring"
+        - "iex"
+        - "invoke-expression"
+        - "frombase64string"
+
+- id: CHAIN_SCHEDULED_TASK_SVCHOST_001
+  name: Task Scheduler Service Host Spawning Script with Network or Execution Markers
+  description: >
+    Detects the Task Scheduler service host (`svchost.exe -s Schedule`) spawning
+    a scripting host that also carries a suspicious command line — specifically
+    network access, encoded content, or in-memory execution keywords. This
+    complements CHAIN_SCHEDULED_TASK_SCRIPT_001 by covering the modern service-host
+    parent path while preserving precision with an explicit `-s Schedule` parent
+    command-line gate.
+  mitre_technique: T1053.005
+  mitre_tactic: Persistence
+  severity: Medium
+  event_ids: [1]
+  logic: AND
+  conditions:
+    - field: parent_image
+      operator: contains_any
+      values:
+        - "svchost.exe"
+    - field: parent_command_line
+      operator: contains_any
+      values:
+        - "-s Schedule"
+    - field: image
+      operator: ends_with_any
+      values:
+        - "powershell.exe"
+        - "wscript.exe"
+        - "cscript.exe"
+        - "mshta.exe"
+    - field: command_line
+      operator: contains_any
+      values:
+        - "http://"
+        - "https://"
+        - "-enc"
+        - "-encoded"
+        - "downloadstring"
+        - "iex"
+        - "invoke-expression"
+        - "frombase64string"
+
+- id: CHAIN_LOLBIN_CHILD_001
+  name: LOLBin Spawning Shell or Script Process as Child
+  description: >
+    Detects high-risk LOLBins (mshta, rundll32, odbcconf, cmstp, InstallUtil,
+    regasm, regsvcs) spawning a command shell or scripting host as a child process.
+    This is the second-stage indicator in LOLBin abuse chains: the LOLBin
+    successfully executed its weaponized payload, which then launched an interactive
+    shell or scripting host to continue the attack chain. Combined with the
+    corresponding EID 1 LOLBin detection rules, this provides a two-alert chain
+    for the same attack. Rundll32 is included here because while it has legitimate
+    uses at the EID 1 layer (hence the specific command_line conditions in
+    LOLBIN_RUNDLL32_SUSPICIOUS_001), rundll32 spawning a child shell is always
+    malicious — legitimate rundll32 invocations never spawn interactive children.
+  mitre_technique: T1218
+  mitre_tactic: Defense Evasion
+  severity: High
+  event_ids: [1]
+  logic: AND
+  conditions:
+    - field: parent_image
+      operator: ends_with_any
+      values:
+        - "mshta.exe"
+        - "rundll32.exe"
+        - "odbcconf.exe"
+        - "cmstp.exe"
+        - "installutil.exe"
+        - "regasm.exe"
+        - "regsvcs.exe"
+    - field: image
+      operator: ends_with_any
+      values:
+        - "cmd.exe"
+        - "powershell.exe"
+        - "wscript.exe"
+        - "cscript.exe"

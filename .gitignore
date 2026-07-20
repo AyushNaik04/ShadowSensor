@@ -1,0 +1,45 @@
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+
+# Virtual environments
+.venv/
+venv/
+
+# Databases and data files
+*.db
+data/
+
+# Distribution / packaging
+dist/
+build/
+*.spec
+
+# Tool caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Bundled Python runtime (948 MB — install Python 3.11 separately, use requirements.txt)
+python_runtime/
+
+# Runtime logs and artifacts
+logs/
+.shadowsensor_bookmark.xml
+stdout
+0.0.9
+
+# Extraction and temp artifacts
+_docx_extracted.txt
+
+# Stale document copies
+ShadowSensor_Technical_Flow (1).docx
+
+# Internal planning and coordination documents (not for public repo)
+CURSOR_INSTRUCTIONS.md
+task.md
+prompt_generator_handover.md
+ShadowSensor_Master_Implementation_Plan.md
+documentation_phase3_and_killchain.md
+Documentation/ShadowSensor_QA_Reference.docx

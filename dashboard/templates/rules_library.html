@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+
+{% block title %}ShadowSensor — Rules Library{% endblock %}
+
+{% block page_title %}<h1>Rules Library</h1>{% endblock %}
+
+{% block content %}
+<div class="rules-toolbar">
+  <input id="rule-filter" type="text" placeholder="Filter rules…"
+         class="filter-input" oninput="applyFilters()">
+  <div class="sev-pills">
+    <button type="button" class="sev-pill active" data-sev="all" onclick="setSev(this)">All</button>
+    <button type="button" class="sev-pill" data-sev="Critical" onclick="setSev(this)">Critical</button>
+    <button type="button" class="sev-pill" data-sev="High" onclick="setSev(this)">High</button>
+    <button type="button" class="sev-pill" data-sev="Medium" onclick="setSev(this)">Medium</button>
+    <button type="button" class="sev-pill" data-sev="Low" onclick="setSev(this)">Low</button>
+  </div>
+  <span id="rules-count" class="text-muted"></span>
+</div>
+
+<div class="card">
+  <table class="data-table" id="rules-table">
+    <thead>
+      <tr>
+        <th>Rule ID</th><th>Rule Name</th><th>Severity</th>
+        <th>MITRE Technique</th><th>MITRE Tactic</th><th>Hit Count</th>
+      </tr>
+    </thead>
+    <tbody id="rules-tbody">
+      <tr><td colspan="6" class="empty-state">Loading rules…</td></tr>
+    </tbody>
+  </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+var _allRules = [];
+
+function hitCountClass(n) {
+    if (n === 0) return 'text-muted';
+    if (n <= 5) return 'hit-low';
+    if (n <= 20) return 'hit-medium';
+    return 'hit-high';
+}
+
+function escapeHtml(s) {
+    if (!s) return '';
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function renderRules(rules) {
+    var tbody = document.getElementById('rules-tbody');
+    document.getElementById('rules-count').textContent = rules.length + ' rule' + (rules.length !== 1 ? 's' : '');
+    if (!rules.length) {
+        tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No rules match filter</td></tr>';
+        return;
+    }
+    tbody.innerHTML = rules.map(function(r, i) {
+        var sev = (r.severity || '').toLowerCase();
+        var mitre = r.mitre_technique
+            ? '<a href="https://attack.mitre.org/techniques/' + escapeHtml(r.mitre_technique) + '/" target="_blank" rel="noopener" class="mitre-link">' + escapeHtml(r.mitre_technique) + '</a>'
+            : '—';
+        return '<tr class="rule-row" onclick="toggleDetail(' + i + ')">' +
+            '<td class="mono">' + escapeHtml(r.rule_id) + '</td>' +
+            '<td>' + escapeHtml(r.rule_name) + '</td>' +
+            '<td><span class="badge badge-' + sev + '">' + escapeHtml(r.severity || '—') + '</span></td>' +
+            '<td>' + mitre + '</td>' +
+            '<td>' + escapeHtml(r.mitre_tactic || '—') + '</td>' +
+            '<td class="' + hitCountClass(r.hit_count) + '">' + (r.hit_count != null ? r.hit_count : 0) + '</td>' +
+            '</tr>' +
+            '<tr id="detail-' + i + '" class="rule-detail-row" style="display:none">' +
+            '<td colspan="6"><dl class="rule-detail-list">' +
+            '<dt>Description</dt><dd>' + escapeHtml(r.description || 'No description available.') + '</dd>' +
+            '</dl></td></tr>';
+    }).join('');
+}
+
+function toggleDetail(i) {
+    var row = document.getElementById('detail-' + i);
+    if (!row) return;
+    row.style.display = row.style.display === 'none' ? '' : 'none';
+}
+
+function applyFilters() {
+    var text = document.getElementById('rule-filter').value.toLowerCase();
+    var sev = document.querySelector('.sev-pill.active');
+    var sevVal = sev ? sev.dataset.sev : 'all';
+    renderRules(_allRules.filter(function(r) {
+        return (sevVal === 'all' || r.severity === sevVal) &&
+            ((r.rule_name || '').toLowerCase().indexOf(text) >= 0 ||
+             (r.rule_id || '').toLowerCase().indexOf(text) >= 0);
+    }));
+}
+
+function setSev(btn) {
+    document.querySelectorAll('.sev-pill').forEach(function(b) { b.classList.remove('active'); });
+    btn.classList.add('active');
+    applyFilters();
+}
+
+async function loadRules() {
+    try {
+        var res = await fetch('/api/v1/rules');
+        _allRules = await res.json();
+        renderRules(_allRules);
+    } catch (e) {
+        document.getElementById('rules-tbody').innerHTML =
+            '<tr><td colspan="6" class="empty-state">Failed to load rules</td></tr>';
+    }
+}
+
+loadRules();
+</script>
+{% endblock %}

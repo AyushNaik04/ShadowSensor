@@ -1,0 +1,262 @@
+- id: NET_POWERSHELL_HTTP_001
+  name: PowerShell Outbound Network Connection
+  description: >
+    Detects powershell.exe making an outbound HTTP or HTTPS connection to a
+    non-Microsoft / non-benign-update destination, a network-layer indicator of
+    download cradle or command-and-control activity.
+    Phase 2B hardening (multi-condition redesign):
+    Added destination_hostname exclusion for known-benign Microsoft and ecosystem
+    update/management domains.  Legitimate PS activity (Update-Help, Install-Module
+    from PSGallery, Windows Update, NuGet package restore) connects exclusively
+    to well-known Microsoft-operated hostnames; malicious C2 and download cradles
+    use attacker-controlled domains or direct IP addresses.
+    allow_null: true on destination_hostname ensures the rule still fires for
+    IP-direct connections (unresolved hostname = None) — a common C2 pattern.
+    Known limitation: destination_hostname filtering cannot be fully complete
+    (any new Microsoft CDN domain could be missed); full resolution of benign
+    enterprise PowerShell web traffic requires correlating the NetworkConnect
+    event with the originating ProcessCreate (parent/command-line context) which
+    is a Phase 4B capability.  This condition substantially reduces the baseline
+    false-positive rate while preserving IP-direct and unknown-domain alerting.
+    Before/after: old rule fired on ANY outbound powershell.exe connection to
+    port 80/443 (4 benign false positives from Update-Help / PSGallery / Windows
+    Update).  New rule additionally requires the destination to be outside the
+    known-benign hostname set.
+  mitre_technique: T1071.001
+  mitre_tactic: Command and Control
+  severity: High
+  event_ids: [3]
+  logic: AND
+  conditions:
+    - field: image
+      operator: ends_with
+      value: "powershell.exe"
+    - field: initiated
+      operator: equals
+      value: "true"
+    - field: destination_port
+      operator: regex
+      value: "^(80|443)$"  # Exact match — prevents substring false-positives on 8080, 8443, etc.
+    - field: destination_hostname
+      operator: not_contains_any
+      allow_null: true   # IP-direct connections (no DNS resolution) also fire — unresolved hostname is suspicious
+      values:
+        - ".microsoft.com"       # Windows Update, Microsoft CDN, Office 365
+        - ".windowsupdate.com"   # Windows Update delivery
+        - ".powershellgallery.com"  # PowerShell Gallery (Install-Module)
+        - ".office.com"          # Microsoft Office cloud services
+        - ".office365.com"       # Microsoft 365
+        - ".windows.com"         # Windows telemetry and update endpoints
+        - ".visualstudio.com"    # Visual Studio / VS Code extension marketplace
+        - ".nuget.org"           # NuGet package restore
+        - ".azure.com"           # Azure management / DevOps
+        - ".live.com"            # Microsoft Live / OneDrive
+
+- id: NET_SCRIPTING_ENGINE_HTTP_001
+  name: Script Host Outbound HTTP Connection
+  description: >
+    Detects wscript.exe or cscript.exe making outbound HTTP or HTTPS connections.
+    Script hosts have no legitimate reason to initiate network connections in most
+    enterprise environments — they execute scripts provided by the operating
+    environment, not reach out autonomously. When they do make outbound connections,
+    it is almost always due to a malicious VBScript or JScript downloading a
+    second-stage payload. This is a network-layer corroborating signal for
+    CHAIN_SCRIPT_HOST_* parent-child rules — both firing together constitutes
+    a very high-confidence detection. Observed in Emotet, QBot, and most
+    script-based commodity loaders.
+  mitre_technique: T1071.001
+  mitre_tactic: Command and Control
+  severity: High
+  event_ids: [3]
+  logic: AND
+  conditions:
+    - field: image
+      operator: ends_with_any
+      values:
+        - "wscript.exe"
+        - "cscript.exe"
+    - field: initiated
+      operator: equals
+      value: "true"
+    - field: destination_port
+      operator: regex
+      value: "^(80|443)$"
+
+- id: NET_LOLBIN_PROCESS_HTTP_001
+  name: LOLBin or Command Shell Outbound HTTP Connection
+  description: >
+    Detects cmd.exe, mshta.exe, rundll32.exe, regsvr32.exe, or msiexec.exe making
+    outbound HTTP/HTTPS connections. These processes have no legitimate reason to
+    initiate outbound web connections in normal operation — cmd.exe does not resolve
+    hostnames or open sockets natively, and the other LOLBins should only make
+    network connections when being actively abused. When these processes appear in
+    EID 3 telemetry as the initiating process, it is a reliable indicator that
+    they are being used as download-and-execute proxies. Provides a network-layer
+    cross-correlation signal for the corresponding EID 1 LOLBin execution rules.
+  mitre_technique: T1071.001
+  mitre_tactic: Command and Control
+  severity: High
+  event_ids: [3]
+  logic: AND
+  conditions:
+    - field: image
+      operator: ends_with_any
+      values:
+        - "cmd.exe"
+        - "mshta.exe"
+        - "rundll32.exe"
+        - "regsvr32.exe"
+        - "msiexec.exe"
+    - field: initiated
+      operator: equals
+      value: "true"
+    - field: destination_port
+      operator: regex
+      value: "^(80|443)$"
+
+- id: NET_SUSPICIOUS_PORT_001
+  name: Outbound Connection to Known C2 and Post-Exploitation Ports
+  description: >
+    Detects any process making outbound connections to ports commonly used as
+    defaults in post-exploitation frameworks and remote access tools. Port 4444
+    is the Metasploit default reverse shell port. Port 1337 is used by various
+    RATs. Port 8888 is a common Cobalt Strike and custom C2 default. Port 31337
+    ("elite") is a classic backdoor port. Port 9999 appears in several commodity
+    C2 frameworks. While attackers may customize their ports, defenders catching
+    even a subset of default-configuration frameworks is operationally significant.
+    No process filter is applied — any process connecting to these ports from an
+    endpoint is anomalous.
+  mitre_technique: T1571
+  mitre_tactic: Command and Control
+  severity: High
+  event_ids: [3]
+  logic: AND
+  conditions:
+    - field: initiated
+      operator: equals
+      value: "true"
+    - field: destination_port
+      operator: regex
+      value: "^(4444|1337|8888|9999|31337|4545|6666|7777|55555|1234|12345|65535|2222|3333)$"
+
+- id: NET_LOLBIN_NETWORK_001
+  name: High-Risk LOLBin Making Any Outbound Network Connection
+  description: >
+    Detects outbound network connections initiated by LOLBins that should never
+    make autonomous network calls in normal operation: mshta, regsvr32, msiexec,
+    InstallUtil, cmstp, odbcconf, regasm, regsvcs. Unlike cmd.exe or rundll32
+    which may appear in EID 3 telemetry occasionally, these binaries have no
+    documented legitimate behavior that involves initiating network connections
+    independently. Any appearance as the initiating process in a network event
+    is a strong indicator of weaponization. No port restriction — any outbound
+    connection from these processes is suspicious.
+  mitre_technique: T1105
+  mitre_tactic: Command and Control
+  severity: High
+  event_ids: [3]
+  logic: AND
+  conditions:
+    - field: image
+      operator: ends_with_any
+      values:
+        - "mshta.exe"
+        - "regsvr32.exe"
+        - "msiexec.exe"
+        - "installutil.exe"
+        - "cmstp.exe"
+        - "odbcconf.exe"
+        - "regasm.exe"
+        - "regsvcs.exe"
+    - field: initiated
+      operator: equals
+      value: "true"
+
+- id: NET_SMB_LATERAL_001
+  name: Non-System Process Initiating SMB Outbound Connection
+  description: >
+    Detects outbound SMB connections (port 445 or 139) initiated by processes
+    other than known legitimate Windows system components. SMB outbound from
+    endpoints is normal for mapped drives and file sharing, but the initiating
+    process in those cases is always svchost.exe or System. When a non-system
+    process initiates an SMB connection — such as a PowerShell session, a LOLBin,
+    or a custom binary — it strongly indicates lateral movement via SMB (Pass the
+    Hash, SMB relay, or remote service creation). Observed in APT29, Emotet
+    lateral movement chains, and every major red team framework's pivot module.
+  mitre_technique: T1021.002
+  mitre_tactic: Lateral Movement
+  severity: High
+  event_ids: [3]
+  logic: AND
+  conditions:
+    - field: initiated
+      operator: equals
+      value: "true"
+    - field: destination_port
+      operator: regex
+      value: "^(445|139)$"
+    - field: image
+      operator: not_contains_any
+      values:
+        - "system"
+        - "svchost.exe"
+        - "lsass.exe"
+        - "services.exe"
+        - "msmpeng.exe"
+        - "wmiprvse.exe"
+
+- id: NET_DNS_LONG_QUERY_001
+  name: Unusually Long DNS Query Indicating Potential DNS Tunneling
+  description: >
+    Detects DNS queries with hostnames exceeding 50 characters from non-browser
+    processes. Legitimate DNS hostnames are typically short; CDN-based hostnames
+    occasionally reach 30-40 characters. DNS tunneling tools (Iodine, DNScat2,
+    custom C2 protocols) encode data in DNS query names, producing queries of
+    50-200+ characters. Browser exclusion is applied because CDN and tracking
+    services can legitimately generate moderately long hostnames from browsers.
+    Non-browser processes generating very long DNS queries have no legitimate
+    explanation. This rule fires on EID 22 (DNS Query events from Sysmon).
+  mitre_technique: T1071.004
+  mitre_tactic: Command and Control
+  severity: Medium
+  event_ids: [22]
+  logic: AND
+  conditions:
+    - field: query_name
+      operator: regex
+      value: ".{50,}"
+    - field: image
+      operator: not_ends_with_any
+      values:
+        - "chrome.exe"
+        - "msedge.exe"
+        - "firefox.exe"
+        - "iexplore.exe"
+        - "brave.exe"
+        - "SearchApp.exe"
+        - "msmpeng.exe"
+        - "svchost.exe"
+
+- id: NET_DNS_SCRIPT_ENGINE_001
+  name: Script Host or Shell Process Making DNS Resolution
+  description: >
+    Detects wscript.exe, cscript.exe, or mshta.exe performing DNS lookups.
+    These processes have no legitimate autonomous reason to resolve hostnames —
+    they execute scripts given to them by the operating environment, not initiate
+    network communications independently. Any DNS query from these processes
+    indicates they are executing a script that is attempting to reach out to an
+    external resource, which in a detection context is almost always malicious.
+    PowerShell outbound HTTP is covered separately by NET_POWERSHELL_HTTP_001
+    (EID 3). This rule targets the DNS-resolution layer (EID 22) for processes
+    not yet covered at the network-connection level.
+  mitre_technique: T1071.004
+  mitre_tactic: Command and Control
+  severity: High
+  event_ids: [22]
+  logic: AND
+  conditions:
+    - field: image
+      operator: ends_with_any
+      values:
+        - "wscript.exe"
+        - "cscript.exe"
+        - "mshta.exe"

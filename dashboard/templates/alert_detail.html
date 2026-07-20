@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block title %}ShadowSensor — Alert Details{% endblock %}
+
+{% block page_title %}<h1>Alert Details</h1>{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+  <a href="/dashboard/alerts">Alerts</a> &rsaquo; Alert #{{ alert.id }}
+</div>
+
+<div class="alert-header">
+  <span class="badge badge-lg badge-{{ alert.severity | lower }}">{{ alert.severity }}</span>
+  <h1>{{ alert.rule_name }}</h1>
+  <div class="alert-meta">{{ alert.timestamp | format_ts }}</div>
+</div>
+
+<div class="detail-panel card">
+  <dl class="detail-list">
+    <dt>Rule ID</dt>
+    <dd class="mono">{{ alert.rule_id }}</dd>
+    <dt>MITRE Technique</dt>
+    <dd>
+      {% if alert.mitre_technique %}
+      <a href="https://attack.mitre.org/techniques/{{ alert.mitre_technique }}/" target="_blank" rel="noopener" class="mitre-link">{{ alert.mitre_technique }}</a>
+      {% else %}—{% endif %}
+    </dd>
+    <dt>MITRE Tactic</dt>
+    <dd>{{ alert.mitre_tactic or '—' }}</dd>
+    <dt>Status</dt>
+    <dd>
+      <span class="badge badge-{{ alert.status }}" id="alert-status-badge">{{ alert.status }}</span>
+      <div class="btn-group" style="margin-top:8px">
+        {% if alert.status != 'acknowledged' and alert.status != 'resolved' %}
+        <button type="button"
+                hx-patch="/api/v1/alerts/{{ alert.id }}/status"
+                hx-vals='{"status":"acknowledged"}'
+                hx-swap="none"
+                hx-on::after-request="if(event.detail.successful) updateAlertStatus('acknowledged')"
+                class="btn-secondary btn-sm">Acknowledge</button>
+        {% endif %}
+        {% if alert.status != 'resolved' %}
+        <button type="button"
+                hx-patch="/api/v1/alerts/{{ alert.id }}/status"
+                hx-vals='{"status":"resolved"}'
+                hx-swap="none"
+                hx-on::after-request="if(event.detail.successful) updateAlertStatus('resolved')"
+                class="btn-secondary btn-sm">Resolve</button>
+        {% endif %}
+      </div>
+    </dd>
+  </dl>
+  <dl class="detail-list">
+    <dt>Process</dt>
+    <dd>{{ alert.process_image or '—' }}</dd>
+    <dt>PID</dt>
+    <dd>{{ alert.process_pid if alert.process_pid is not none else '—' }}</dd>
+    <dt>Command</dt>
+    <dd><code>{{ alert.command_line or '—' }}</code></dd>
+    <dt>Parent</dt>
+    <dd>{{ alert.parent_image or '—' }}</dd>
+  </dl>
+</div>
+
+{% if raw_json_pretty %}
+<details>
+  <summary>Raw Event JSON</summary>
+  <pre class="json-block">{{ raw_json_pretty }}</pre>
+</details>
+{% endif %}
+
+<p style="margin-top:24px">
+  <a href="/dashboard/alerts" class="btn-secondary">&larr; Back to Alerts</a>
+</p>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function updateAlertStatus(status) {
+    const badge = document.getElementById('alert-status-badge');
+    if (!badge) return;
+    badge.textContent = status;
+    badge.className = 'badge badge-' + status;
+}
+</script>
+{% endblock %}

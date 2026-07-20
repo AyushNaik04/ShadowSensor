@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block title %}ShadowSensor — ML Insights{% endblock %}
+
+{% block page_title %}<h1>ML Insights</h1>{% endblock %}
+
+{% block content %}
+<div class="ml-placeholder-wrapper">
+  <div class="card ml-placeholder-card">
+    <div class="ml-icon">
+      <svg viewBox="0 0 120 120" width="80" height="80" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="60" cy="60" r="50" stroke="currentColor" stroke-width="2" fill="none" opacity="0.3"/>
+        <circle cx="60" cy="60" r="30" stroke="currentColor" stroke-width="2" fill="none" opacity="0.5"/>
+        <circle cx="60" cy="60" r="6" fill="currentColor"/>
+        <circle cx="60" cy="20" r="5" fill="currentColor" opacity="0.7"/>
+        <circle cx="95" cy="40" r="5" fill="currentColor" opacity="0.7"/>
+        <circle cx="95" cy="80" r="5" fill="currentColor" opacity="0.7"/>
+        <circle cx="60" cy="100" r="5" fill="currentColor" opacity="0.7"/>
+        <circle cx="25" cy="80" r="5" fill="currentColor" opacity="0.7"/>
+        <circle cx="25" cy="40" r="5" fill="currentColor" opacity="0.7"/>
+      </svg>
+    </div>
+    <h2>ML Models Not Yet Trained</h2>
+    <p class="ml-subtext">
+      Isolation Forest and Random Forest models will be available after Phase 6B/7B.
+      Once trained, this page will show anomaly scores per event, model performance metrics
+      (Precision, Recall, F1, ROC-AUC), and score distributions over time.
+    </p>
+    <div id="ml-status-badge" class="ml-status-badge text-muted">
+      ● Checking model status…
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+fetch('/api/v1/ml-status')
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+        document.getElementById('ml-status-badge').textContent =
+            d.models_trained ? '● Models: Trained' : '● Models: Not trained';
+    })
+    .catch(function() {
+        document.getElementById('ml-status-badge').textContent = '● Status unavailable';
+    });
+</script>
+{% endblock %}

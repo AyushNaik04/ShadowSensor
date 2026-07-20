@@ -1,0 +1,12 @@
+{% if alerts %}
+{% for alert in alerts %}
+<tr>
+  <td>{{ alert.timestamp | format_ts }}</td>
+  <td><span class="badge badge-{{ alert.severity | lower }}">{{ alert.severity }}</span></td>
+  <td><a href="/dashboard/alerts/{{ alert.id }}">{{ alert.rule_name }}</a></td>
+  <td>{{ alert.process_image | basename }}</td>
+</tr>
+{% endfor %}
+{% else %}
+<tr><td colspan="4" class="empty-state">No recent alerts</td></tr>
+{% endif %}

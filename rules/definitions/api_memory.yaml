@@ -1,0 +1,264 @@
+- id: API_CREATE_REMOTE_THREAD_001
+  name: CreateRemoteThread Detected
+  description: >
+    Detects CreateRemoteThread events where the source and target process have
+    different image names — the primary signal for classic code injection (a
+    foreign process writing a thread into another process's memory space).
+    Phase 2B hardening: added not_same_basename to exclude same-image-name
+    cross-process thread creation (e.g. Chrome/Edge renderer sandbox helpers,
+    JIT compiler threads within the same browser family) which is overwhelmingly
+    benign multi-process-application behaviour.  WerFault.exe and csrss.exe are
+    also excluded as source processes: WerFault legitimately injects a diagnostic
+    thread into crashing processes as part of Windows Error Reporting, and CSRSS
+    creates threads during session management.
+    Before/after: old rule fired on ANY Event ID 8 (source_image regex ".+"),
+    including chrome->chrome JIT threads and WerFault->crashing-app crash
+    reporting.  New rule requires different-image source/target pair from a
+    non-excluded source process.
+  mitre_technique: T1055
+  mitre_tactic: Defense Evasion
+  severity: Critical
+  event_ids: [8]
+  logic: AND
+  conditions:
+    - field: source_image
+      operator: regex
+      value: ".+"
+    - field: source_image
+      operator: not_same_basename
+      reference_field: target_image
+    - field: source_image
+      operator: not_contains_any
+      values:
+        - "werfault.exe"   # Windows Error Reporting — injects diagnostic thread into crashing process
+        - "csrss.exe"      # Windows session management — creates threads for session lifecycle
+
+- id: API_OPEN_PROCESS_SUSPICIOUS_ACCESS_001
+  name: Suspicious OpenProcess targeting security-sensitive process
+  description: >
+    A process opened a security-sensitive system process (lsass, winlogon, csrss)
+    with broad access rights commonly used in credential dumping or process injection.
+    Legitimate system components that open these processes are explicitly excluded.
+    Phase 2B redesign: target-centric logic replaces cross-basename matching, which
+    fired on routine Windows activity (explorer->msedge, svchost->RuntimeBroker,
+    services->svchost) during benign VM baseline runs.
+  mitre_technique: T1055
+  mitre_tactic: Defense Evasion
+  severity: High
+  event_ids: [10]
+  logic: AND
+  conditions:
+    - field: granted_access
+      operator: contains_any
+      values:
+        - "0x1f0fff"  # PROCESS_ALL_ACCESS — unrestricted access, required for most injection
+        - "0x1410"    # PROCESS_CREATE_THREAD | PROCESS_DUP_HANDLE | PROCESS_VM_WRITE — classic injection combo
+        - "0x1fffff"  # PROCESS_ALL_ACCESS (alternate form seen in some tooling)
+    - field: target_image
+      operator: ends_with_any
+      values:
+        - "lsass.exe"
+        - "winlogon.exe"
+        - "csrss.exe"
+    - field: source_image
+      operator: not_ends_with_any
+      values:
+        - "MsMpEng.exe"   # Windows Defender memory scanner
+        - "csrss.exe"     # Windows session management
+        - "lsass.exe"     # LSASS self-reference
+        - "winlogon.exe"  # Windows logon process (opens lsass during authentication)
+        - "wininit.exe"   # Windows initialization process (opens lsass during boot)
+
+- id: API_DLL_LOAD_SUSPICIOUS_PATH_001
+  name: Unsigned DLL Loaded from User-Writable Staging Path
+  description: >
+    Detects an unsigned DLL being loaded from a user-writable staging location:
+    Temp, AppData, Downloads, or ProgramData. Legitimate DLLs loaded during
+    normal process operation originate from System32, SysWOW64, or the
+    application's own installation directory — they are also signed. A DLL that
+    is both unsigned and located in a user-writable staging path is a strong
+    indicator of reflective or manual map DLL injection, sideloading, or
+    in-memory-to-disk staging. This is a cross-process corroboration signal:
+    if a DLL appears here and an EID 10 event also fires for the same process,
+    the combined confidence is very high.
+  mitre_technique: T1055.001
+  mitre_tactic: Defense Evasion
+  severity: High
+  event_ids: [7]
+  logic: AND
+  conditions:
+    - field: image_loaded
+      operator: contains_any
+      values:
+        - "\\temp\\"
+        - "\\appdata\\local\\temp\\"
+        - "\\appdata\\roaming\\"
+        - "\\downloads\\"
+        - "\\programdata\\"
+        - "c:\\users\\public\\"
+    - field: signed
+      operator: equals
+      value: "false"
+
+- id: API_LOLBIN_DLL_UNSIGNED_001
+  name: LOLBin Loading an Unsigned DLL
+  description: >
+    Detects a known LOLBin (rundll32, regsvr32, mshta, msiexec, cmstp) loading
+    an unsigned DLL. These processes have no legitimate operational need to load
+    unsigned DLLs — their legitimate usage is to load specific, signed system or
+    application DLLs. When they load unsigned DLLs, it is a reliable indicator
+    that they are being used as a signed-binary proxy to load attacker-controlled
+    code, bypassing application whitelisting. This is the Image Load layer of
+    corroboration for the Process Create layer detections in lolbins.yaml.
+  mitre_technique: T1055.001
+  mitre_tactic: Defense Evasion
+  severity: High
+  event_ids: [7]
+  logic: AND
+  conditions:
+    - field: image
+      operator: ends_with_any
+      values:
+        - "rundll32.exe"
+        - "regsvr32.exe"
+        - "mshta.exe"
+        - "msiexec.exe"
+        - "cmstp.exe"
+    - field: signed
+      operator: equals
+      value: "false"
+
+- id: API_OPEN_PROCESS_VM_WRITE_001
+  name: Process Memory Write Access to Arbitrary Target Process
+  description: >
+    Detects processes requesting PROCESS_VM_WRITE access (0x0020) to another
+    process. VM_WRITE is the core capability required for classic process injection:
+    without it, an attacker cannot write shellcode or a DLL path into the target
+    process's memory. The existing API_OPEN_PROCESS_SUSPICIOUS_ACCESS_001 rule
+    targets PROCESS_ALL_ACCESS against security-sensitive processes (lsass, etc.).
+    This rule is broader: it fires on any PROCESS_VM_WRITE or common injection
+    access mask combinations against any target, from any non-system source.
+    Access mask 0x0028 combines VM_WRITE with VM_OPERATION (needed to allocate
+    memory in the target). 0x0038 adds VM_READ. Observed in virtually all injection
+    techniques including classic DLL injection, process hollowing, and reflective loading.
+  mitre_technique: T1055
+  mitre_tactic: Defense Evasion
+  severity: Critical
+  event_ids: [10]
+  logic: AND
+  conditions:
+    - field: granted_access
+      operator: contains_any
+      values:
+        - "0x0020"
+        - "0x0028"
+        - "0x0038"
+        - "0x001f0fff"
+        - "0x0021"
+    - field: source_image
+      operator: not_ends_with_any
+      values:
+        - "msmpeng.exe"
+        - "csrss.exe"
+        - "lsass.exe"
+        - "winlogon.exe"
+        - "wininit.exe"
+        - "werfault.exe"
+        - "svchost.exe"
+
+- id: API_TOKEN_MANIPULATION_001
+  name: Process Handle Duplication for Token Theft
+  description: >
+    Detects processes requesting PROCESS_DUP_HANDLE (0x0040) access to security-
+    sensitive system processes. PROCESS_DUP_HANDLE is the access right needed to
+    duplicate a handle from another process — specifically, to steal a privileged
+    token from LSASS, Services, or Winlogon to impersonate a higher-privileged
+    context. This is the key access mask in token theft and impersonation attacks
+    (T1134). The target is restricted to processes that hold privileged tokens:
+    lsass (SYSTEM token), winlogon (SYSTEM/privileged session tokens), and
+    services.exe (service account tokens). Observed in Incognito, Cobalt Strike's
+    steal_token command, and PowerSploit's Invoke-TokenManipulation.
+  mitre_technique: T1134
+  mitre_tactic: Defense Evasion
+  severity: High
+  event_ids: [10]
+  logic: AND
+  conditions:
+    - field: granted_access
+      operator: contains_any
+      values:
+        - "0x0040"
+        - "0x0440"
+        - "0x1440"
+    - field: target_image
+      operator: ends_with_any
+      values:
+        - "lsass.exe"
+        - "winlogon.exe"
+        - "services.exe"
+    - field: source_image
+      operator: not_ends_with_any
+      values:
+        - "msmpeng.exe"
+        - "csrss.exe"
+        - "lsass.exe"
+        - "winlogon.exe"
+        - "wininit.exe"
+
+- id: API_AV_PROCESS_ACCESS_001
+  name: Non-System Process Accessing Security Software Process
+  description: >
+    Detects a non-system process opening a known AV or security agent process
+    with access rights sufficient to terminate or write to it. Security software
+    termination (T1562.001) requires PROCESS_TERMINATE (0x0001) or broader access.
+    Legitimate interactions with AV processes are performed exclusively by Windows
+    Update, the Windows Service Control Manager (services.exe), svchost.exe, and
+    TrustedInstaller.exe — all of which are excluded. Any other process opening
+    AV/EDR agent processes with broad access rights is attempting to disable or
+    circumvent security tooling. AV process names listed cover Windows Defender,
+    ESET, Kaspersky, Bitdefender, Avast, and SentinelOne.
+  mitre_technique: T1562.001
+  mitre_tactic: Defense Evasion
+  severity: High
+  event_ids: [10]
+  logic: AND
+  conditions:
+    - field: target_image
+      operator: ends_with_any
+      values:
+        - "msmpeng.exe"
+        - "mpcmdrun.exe"
+        - "avgnt.exe"
+        - "avp.exe"
+        - "bdagent.exe"
+        - "ekrn.exe"
+        - "sentinelagent.exe"
+        - "cylancesvc.exe"
+        - "cb.exe"
+    - field: granted_access
+      operator: contains_any
+      values:
+        - "0x0001"
+        - "0x0021"
+        - "0x1f0fff"
+        - "0x1fffff"
+        - "0x0020"
+    - field: source_image
+      operator: not_ends_with_any
+      values:
+        - "msmpeng.exe"
+        - "svchost.exe"
+        - "services.exe"
+        - "trustedinstaller.exe"
+        - "tiworker.exe"
+        - "sgrmbroker.exe"
+        - "wuauclt.exe"
+    - field: source_image
+      operator: not_ends_with_any
+      values:
+        - "csrss.exe"
+        - "conhost.exe"
+        - "svchost.exe"
+        - "lsass.exe"
+        - "winlogon.exe"
+        - "wininit.exe"

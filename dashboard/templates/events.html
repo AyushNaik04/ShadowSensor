@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+
+{% block title %}ShadowSensor — Event Explorer{% endblock %}
+
+{% block page_title %}<h1>Event Explorer</h1>{% endblock %}
+
+{% block content %}
+<div class="kql-bar-wrapper">
+  <input id="kql-input" type="text" class="kql-bar"
+         placeholder="image:powershell* AND pid:1234" autofocus>
+  <button type="button" onclick="submitEventKQL()" class="btn-primary">Search</button>
+  <button type="button" onclick="clearEventKQL()" class="btn-secondary" id="clear-btn" style="display:none">Clear</button>
+</div>
+<div id="kql-error" class="kql-error-msg" style="display:none"></div>
+
+<div class="event-type-pills">
+  <button type="button" class="event-pill active" data-type="" onclick="setEventType(this, '')">All</button>
+  <button type="button" class="event-pill" data-type="1" onclick="setEventType(this, '1')">1: Process Create</button>
+  <button type="button" class="event-pill" data-type="3" onclick="setEventType(this, '3')">3: Network</button>
+  <button type="button" class="event-pill" data-type="7" onclick="setEventType(this, '7')">7: Image Load</button>
+  <button type="button" class="event-pill" data-type="8" onclick="setEventType(this, '8')">8: Remote Thread</button>
+  <button type="button" class="event-pill" data-type="10" onclick="setEventType(this, '10')">10: Open Process</button>
+  <button type="button" class="event-pill" data-type="22" onclick="setEventType(this, '22')">22: DNS</button>
+</div>
+
+<div class="toolbar-row">
+  <button type="button" class="btn-secondary btn-sm"
+          hx-get="/dashboard/partials/events-rows"
+          hx-target="#events-table-body"
+          hx-swap="innerHTML"
+          hx-include="#kql-input, #page-num, #event-type-filter, #param-quick, #param-from, #param-to">
+    ⟳ Refresh
+  </button>
+  <span id="results-count" class="text-secondary">
+    {% if pagination %}{{ pagination.total }} event{{ 's' if pagination.total != 1 else '' }}{% endif %}
+  </span>
+</div>
+
+<div class="card">
+  <table class="data-table" id="events-table">
+    <thead>
+      <tr>
+        <th>Timestamp</th><th>Event Type</th><th>PID</th><th>Image</th><th>Key Detail</th>
+      </tr>
+    </thead>
+    <tbody id="events-table-body"
+           hx-get="/dashboard/partials/events-rows"
+           hx-trigger="load"
+           hx-swap="innerHTML"
+           hx-include="#kql-input, #page-num, #event-type-filter, #param-quick, #param-from, #param-to">
+      {% include "partials/events_rows.html" %}
+    </tbody>
+  </table>
+</div>
+
+<div class="pagination" id="pagination-bar"></div>
+
+<input type="hidden" id="page-num" name="page" value="1">
+<input type="hidden" id="event-type-filter" name="event_type_id" value="">
+{% endblock %}
+
+{% block scripts %}
+<script>
+function buildEventsUrl() {
+    const q = document.getElementById('kql-input').value.trim();
+    let url = '/dashboard/partials/events-rows?' + TimeRange.getParams();
+    if (q) url += '&q=' + encodeURIComponent(q);
+    const page = document.getElementById('page-num').value;
+    const et = document.getElementById('event-type-filter').value;
+    if (page) url += '&page=' + page;
+    if (et) url += '&event_type_id=' + et;
+    return url;
+}
+
+async function updateEventsMeta() {
+    const q = document.getElementById('kql-input').value.trim();
+    let url = '/api/v1/events?' + TimeRange.getParams() + '&page=' + (document.getElementById('page-num').value || 1);
+    const et = document.getElementById('event-type-filter').value;
+    if (q) url += '&q=' + encodeURIComponent(q);
+    if (et) url += '&event_type_id=' + et;
+    try {
+        const res = await fetch(url);
+        if (!res.ok) {
+            const err = await res.json();
+            const errDiv = document.getElementById('kql-error');
+            if (errDiv && q) {
+                errDiv.textContent = err.detail || 'Search failed';
+                errDiv.style.display = '';
+            }
+            return;
+        }
+        document.getElementById('kql-error').style.display = 'none';
+        const data = await res.json();
+        document.getElementById('results-count').textContent =
+            data.total + ' event' + (data.total !== 1 ? 's' : '');
+        renderPagination(data.page, data.pages, data.total);
+    } catch (e) { console.error('Meta update failed:', e); }
+}
+
+function renderPagination(page, pages, total) {
+    const bar = document.getElementById('pagination-bar');
+    if (!bar) return;
+    if (total === 0) { bar.innerHTML = ''; return; }
+    bar.innerHTML =
+        '<button type="button" class="btn-secondary btn-sm" ' + (page <= 1 ? 'disabled' : '') +
+        ' onclick="goToEventsPage(' + (page - 1) + ')">Previous</button>' +
+        '<span class="pagination-info">Page ' + page + ' of ' + pages + '</span>' +
+        '<button type="button" class="btn-secondary btn-sm" ' + (page >= pages ? 'disabled' : '') +
+        ' onclick="goToEventsPage(' + (page + 1) + ')">Next</button>';
+}
+
+function goToEventsPage(p) {
+    if (p < 1) return;
+    document.getElementById('page-num').value = p;
+    submitEventKQL();
+}
+
+function setEventType(btn, typeId) {
+    document.querySelectorAll('.event-pill').forEach(function(b) { b.classList.remove('active'); });
+    btn.classList.add('active');
+    document.getElementById('event-type-filter').value = typeId;
+    document.getElementById('page-num').value = '1';
+    htmx.ajax('GET', buildEventsUrl(), { target: '#events-table-body', swap: 'innerHTML' });
+    updateEventsMeta();
+}
+
+function submitEventKQL() {
+    const q = document.getElementById('kql-input').value.trim();
+    document.getElementById('clear-btn').style.display = q ? '' : 'none';
+    document.getElementById('page-num').value = '1';
+    htmx.ajax('GET', buildEventsUrl(), { target: '#events-table-body', swap: 'innerHTML' });
+    updateEventsMeta();
+}
+
+function clearEventKQL() {
+    document.getElementById('kql-input').value = '';
+    document.getElementById('kql-error').style.display = 'none';
+    document.getElementById('clear-btn').style.display = 'none';
+    document.getElementById('page-num').value = '1';
+    htmx.ajax('GET', buildEventsUrl(), { target: '#events-table-body', swap: 'innerHTML' });
+    updateEventsMeta();
+}
+
+document.getElementById('kql-input').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') submitEventKQL();
+    if (e.key === 'Escape') clearEventKQL();
+});
+
+TimeRange.onChange(function() {
+    htmx.ajax('GET', buildEventsUrl(), { target: '#events-table-body', swap: 'innerHTML' });
+    updateEventsMeta();
+});
+
+document.body.addEventListener('htmx:afterSwap', function(evt) {
+    if (evt.detail.target.id === 'events-table-body') {
+        updateEventsMeta();
+        bindEventRowToggle();
+    }
+});
+
+function bindEventRowToggle() {
+    document.querySelectorAll('#events-table-body tr.event-row').forEach(function(row) {
+        row.onclick = function() {
+            const detailId = 'detail-' + row.dataset.eventId;
+            const detail = document.getElementById(detailId);
+            if (detail) {
+                detail.style.display = detail.style.display === 'none' ? '' : 'none';
+            }
+        };
+    });
+}
+
+bindEventRowToggle();
+
+{% if pagination %}renderPagination({{ pagination.page }}, {{ pagination.pages }}, {{ pagination.total }});{% endif %}
+</script>
+{% endblock %}

@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block title %}Kill Chain Coverage — ShadowSensor{% endblock %}
+
+{% block page_title %}
+<h1>ATT&amp;CK Kill Chain Coverage</h1>
+<p class="killchain-page-subtitle">Real-time detection coverage across MITRE ATT&amp;CK tactics</p>
+{% endblock %}
+
+{% block content %}
+<div id="killchain-overview"
+     hx-get="/dashboard/partials/killchain-overview"
+     hx-trigger="load, every 5s"
+     hx-target="#killchain-overview"
+     hx-swap="innerHTML"
+     hx-include="#param-quick, #param-from, #param-to">
+  {% include "partials/killchain_overview.html" %}
+</div>
+
+{% for tactic in tactic_statuses %}
+<div id="stage-detail-{{ tactic.tactic_id }}" class="killchain-stage-detail"></div>
+{% endfor %}
+
+<p class="killchain-attribution">
+  Technique mappings reference the MITRE ATT&amp;CK&reg; framework
+  (<a href="https://attack.mitre.org" target="_blank" rel="noopener">attack.mitre.org</a>)
+</p>
+{% endblock %}

@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+
+{% block title %}ShadowSensor — Home{% endblock %}
+
+{% block page_title %}<h1>Home / Status</h1>{% endblock %}
+
+{% block content %}
+<div class="stat-cards">
+  <div class="stat-card stat-card--total">
+    <div class="stat-number" id="stat-total-alerts">{{ initial_stats.total_alerts if initial_stats else '—' }}</div>
+    <div class="stat-label">Total Alerts</div>
+  </div>
+  <div class="stat-card stat-card--critical">
+    <div class="stat-number" id="stat-critical">{{ initial_stats.by_severity.Critical if initial_stats else '—' }}</div>
+    <div class="stat-label">Critical</div>
+  </div>
+  <div class="stat-card stat-card--high">
+    <div class="stat-number" id="stat-high">{{ initial_stats.by_severity.High if initial_stats else '—' }}</div>
+    <div class="stat-label">High</div>
+  </div>
+  <div class="stat-card stat-card--events">
+    <div class="stat-number" id="stat-events">{{ initial_stats.total_events if initial_stats else '—' }}</div>
+    <div class="stat-label">Events Processed</div>
+  </div>
+  <div class="stat-card stat-card--rules">
+    <div class="stat-number" id="stat-rules-fired">{{ initial_stats.rules_fired if initial_stats else '—' }}</div>
+    <div class="stat-label">Rules Fired</div>
+  </div>
+</div>
+
+<div class="card"><div id="timeline-chart"></div></div>
+
+<div class="row-two-col">
+  <div class="card col-40"><div id="donut-chart"></div></div>
+  <div class="card col-60"><div id="top-rules-chart"></div></div>
+</div>
+
+<div class="card">
+  <h3 class="card-title">Recent Alerts</h3>
+  <table class="data-table">
+    <thead><tr><th>Time</th><th>Severity</th><th>Rule</th><th>Process</th></tr></thead>
+    <tbody id="recent-alerts-body"
+           hx-get="/dashboard/partials/recent-alerts"
+           hx-trigger="every 5s, load"
+           hx-swap="innerHTML"
+           hx-include="#param-quick, #param-from, #param-to">
+      <tr><td colspan="4" class="empty-state">Loading…</td></tr>
+    </tbody>
+  </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function refreshHomeCharts() {
+    const p = TimeRange.getParams();
+    try {
+        const [sRes, tRes, dRes, rRes] = await Promise.all([
+            fetch('/api/v1/stats?' + p),
+            fetch('/api/v1/timeline?' + p),
+            fetch('/api/v1/severity-distribution?' + p),
+            fetch('/api/v1/top-rules?' + p + '&limit=10'),
+        ]);
+        const [stats, timeline, donut, topRules] = await Promise.all([
+            sRes.json(), tRes.json(), dRes.json(), rRes.json(),
+        ]);
+        document.getElementById('stat-total-alerts').textContent = stats.total_alerts ?? '—';
+        document.getElementById('stat-critical').textContent = stats.by_severity?.Critical ?? '—';
+        document.getElementById('stat-high').textContent = stats.by_severity?.High ?? '—';
+        document.getElementById('stat-events').textContent = stats.total_events ?? '—';
+        document.getElementById('stat-rules-fired').textContent = stats.rules_fired ?? '—';
+        initTimelineChart('timeline-chart', timeline.buckets || []);
+        initDonutChart('donut-chart', donut || {});
+        initTopRulesChart('top-rules-chart', topRules || []);
+    } catch (e) { console.error('Chart refresh failed:', e); }
+}
+refreshHomeCharts();
+setInterval(refreshHomeCharts, 5000);
+TimeRange.onChange(function() {
+    refreshHomeCharts();
+    htmx.trigger('#recent-alerts-body', 'load');
+});
+</script>
+{% endblock %}

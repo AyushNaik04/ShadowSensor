@@ -1,0 +1,16 @@
+{% if events %}
+{% for event in events %}
+<tr class="event-row clickable" data-event-id="{{ event.id }}">
+  <td>{{ event.timestamp | format_ts }}</td>
+  <td><span class="badge badge-event">{{ event.event_type_id }}</span></td>
+  <td>{{ event.pid if event.pid is not none else '—' }}</td>
+  <td>{{ event.image | basename }}</td>
+  <td>{{ event | event_key_detail }}</td>
+</tr>
+<tr class="row-detail" id="detail-{{ event.id }}" style="display:none">
+  <td colspan="5"><pre class="json-block">{{ event.raw_json | pretty_json }}</pre></td>
+</tr>
+{% endfor %}
+{% else %}
+<tr><td colspan="5" class="empty-state">No events found in this time range</td></tr>
+{% endif %}

@@ -1,0 +1,44 @@
+{% if alerts %}
+{% for alert in alerts %}
+<tr>
+  <td>{{ alert.timestamp | format_ts }}</td>
+  <td><span class="badge badge-{{ alert.severity | lower }}">{{ alert.severity }}</span></td>
+  <td>
+    <a href="/dashboard/alerts/{{ alert.id }}"
+       class="alert-detail-link"
+       title="{{ alert.rule_name }}">
+      {{ alert.rule_name }}
+    </a>
+  </td>
+  <td>
+    {% if alert.mitre_technique %}
+    <a href="https://attack.mitre.org/techniques/{{ alert.mitre_technique }}/" target="_blank" rel="noopener" class="mitre-link">{{ alert.mitre_technique }}</a>
+    {% else %}—{% endif %}
+  </td>
+  <td>{{ alert.process_image | basename }}</td>
+  <td data-status-id="{{ alert.id }}">
+    <span class="badge badge-{{ alert.status }}">{{ alert.status }}</span>
+  </td>
+  <td>
+    <div class="actions-cell">
+      {% if alert.status != 'acknowledged' and alert.status != 'resolved' %}
+      <button type="button"
+              hx-get="/dashboard/partials/alert-status/{{ alert.id }}?status=acknowledged"
+              hx-target="[data-status-id='{{ alert.id }}']"
+              hx-swap="innerHTML"
+              class="btn-action">Ack</button>
+      {% endif %}
+      {% if alert.status != 'resolved' %}
+      <button type="button"
+              hx-get="/dashboard/partials/alert-status/{{ alert.id }}?status=resolved"
+              hx-target="[data-status-id='{{ alert.id }}']"
+              hx-swap="innerHTML"
+              class="btn-action">Resolve</button>
+      {% endif %}
+    </div>
+  </td>
+</tr>
+{% endfor %}
+{% else %}
+<tr><td colspan="7" class="empty-state">No alerts found in this time range</td></tr>
+{% endif %}
