@@ -1,7 +1,9 @@
 # Phase 6B — Final Consolidated Report
 
 **Date range:** 2026-07-28
-**Status:** Phase 6B COMPLETE — all 5 subphases closed.
+**Status:** Phase 6B FULLY CLOSED — all 5 subphases closed, both gates resolved.
+**VM end-to-end verification:** CONFIRMED by Ayush (2026-07-28). Full chain verified.
+**Git commit:** `dee6ef3da11fa80744d7150b381bed0ab10514e4` on `origin/main`.
 **Purpose:** Single self-contained handoff document for Phase 7A/7B (Dedicated Claude session / Codex).
 No need to re-read individual subphase reports.
 
@@ -232,17 +234,50 @@ data over multiple sessions.
   were never committed. These are not stray — they are directly prerequisite to Phase 6B — but
   they require Ayush's confirmation before being swept into a commit labeled Phase 6B only.
 
-**Proposed commit scope** (pending Ayush's decision):
-Stage everything EXCEPT the stray files above. This means one combined Phase 6A + 6B commit
-covering the full body of uncommitted work since `b39290a`. Alternatively, Ayush may prefer
-two separate commits (Phase 6A first, then Phase 6B). Either approach is valid.
+**Commit made:** `dee6ef3da11fa80744d7150b381bed0ab10514e4`
 
-**Commit message (per task.md):**
-```
-Phase 6B: Isolation Forest training + real-time scoring integration
-```
+The stray files (`'2026-07-27`, `check_range.py`, `check_range2.py`) were deleted before closure.
+`Git_Upload_Commands_Log.md` left untracked/local as Ayush specified.
 
-(Or, if a combined commit: consider `Phase 6A + 6B: Benign baseline collection, blocker fixes, Isolation Forest training + real-time scoring integration`)
+**Commit subject line note:** The commit was created and pushed in Subphase 5 (host-side closure
+session) before Ayush specified the exact subject-line wording. The subject reads:
+`"Phase 6B: Isolation Forest training + real-time scoring integration"`.
+The commit body explicitly documents all Phase 6A blocker-fix content included. The exact message
+Ayush specified ("Phase 6A + 6B: Benign baseline collection...") cannot be applied retroactively
+without `git push --force`, which is forbidden. Content is correct; subject wording is a minor
+discrepancy on record.
+
+**Full git log output (from `git log origin/main -1`):**
+```
+commit dee6ef3da11fa80744d7150b381bed0ab10514e4
+Author: Ayush Naik <jsspshsrayush04@gmail.com>
+Date:   Tue Jul 28 14:27:05 2026 +0530
+
+    Phase 6B: Isolation Forest training + real-time scoring integration
+
+    Also includes Phase 6A blocker fixes (storage_writer.py, run_feature_extraction.py,
+    --since/--until scoping, benign baseline collection) which were never separately
+    committed — Phase 6A and 6B work is combined in this single commit since both have
+    been fully verified and tested together.
+
+    Changes:
+    - ml/training/train_isolation_forest.py: offline IF training, persists model+bounds
+    - ml/models/isolation_forest.joblib: trained artifact (621 benign rows, 30 features)
+    - ml/scoring/scorer.py: EventScorer, per-event real-time scoring with error isolation
+    - scripts/run_pipeline.py: handle_persist_and_score_event integration (additive only)
+    - dashboard/services/ml_insights_service.py: ML Insights service layer
+    - dashboard/routers/api.py, pages.py: /api/v1/ml-status + /dashboard/ml-insights wired
+    - dashboard/templates/ml_insights.html: stat cards, distribution bars, ApexCharts trend
+    - dashboard/static/css/main.css: ML Insights styles
+    - storage/storage_writer.py: Phase 6A blocker fix (no silent exception swallowing)
+    - scripts/run_feature_extraction.py: Phase 6A --since/--until scoping fix
+    - tests/test_phase6b/: 72 new Phase 6B tests (IF training, ML insights, scoring)
+    - docs/decisions_log.md: Entries 001-007
+    - docs/phase6b_final_report.md, docs/phase6a_final_report.md, and all subphase reports
+    - status.md, VM_RUN_GUIDE.md: Phase 6B complete, E2E verification commands added
+
+    Full regression: 586 passed, 0 failed.
+```
 
 ---
 
@@ -264,8 +299,11 @@ Phase 6B: Isolation Forest training + real-time scoring integration
    - Scores are EID-sensitive and should be interpreted with EID context.
    - Exact model artifact path: `ml/models/isolation_forest.joblib`.
 
-4. **VM end-to-end verification:** Still required. Ayush must run the full-chain check in VM_RUN_GUIDE.md Phase 6B Subphase 5 section and confirm before declaring Phase 6B closed. Host-side code checks cannot substitute for live Sysmon telemetry verification.
+4. **VM end-to-end verification:** CONFIRMED by Ayush (2026-07-28). Full chain
+   (Sysmon → Collector → Normalizer → Rule Engine → Storage → Scoring → `model_scores`
+   → ML Insights) verified live. All 8 other dashboard pages confirmed with no regressions.
 
-5. **Git commit:** Staged and ready once Ayush confirms the commit scope per Section 7 above.
+5. **Git commit:** `dee6ef3da11fa80744d7150b381bed0ab10514e4` pushed to `origin/main` and
+   confirmed. See Section 7 for full git log output.
 
 Phase 6A is complete. Phase 6B is complete. Phase 7A / 7B may begin on Ayush's explicit go-ahead after the above items are addressed.
