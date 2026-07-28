@@ -15,7 +15,11 @@ logger = logging.getLogger(__name__)
 
 
 class StorageWriter:
-    """Persist pipeline artifacts to SQLite without propagating failures."""
+    """Persist pipeline artifacts to SQLite.
+
+    Validation problems return None. Unexpected DB/ORM failures are logged and
+    re-raised so callers can surface them without silent loss.
+    """
 
     def __init__(self) -> None:
         self._event_type_map: dict[str, int] = {
@@ -64,7 +68,12 @@ class StorageWriter:
         return datetime.now(UTC)
 
     def write_event(self, event: Any) -> int | None:
-        """Persist a normalized event dataclass. Never raises."""
+        """Persist a normalized event dataclass.
+
+        Validation problems (non-dataclass / unknown type) return None.
+        Unexpected persistence errors are logged and re-raised for the caller
+        to surface without being silently discarded.
+        """
         try:
             if not dataclasses.is_dataclass(event):
                 logger.warning("write_event received non-dataclass event: %r", type(event))
@@ -98,12 +107,17 @@ class StorageWriter:
                 session.add(record)
                 session.flush()
                 return record.id
-        except Exception as exc:  # pragma: no cover - explicit non-raising contract
-            logger.warning("Failed to write event to SQLite (non-fatal): %s", exc)
-            return None
+        except Exception as exc:
+            logger.error(
+                "Failed to write event to SQLite [%s]: %s",
+                type(exc).__name__,
+                exc,
+                exc_info=True,
+            )
+            raise
 
     def write_rule_hit(self, hit: Any, event_id: int | None) -> int | None:
-        """Persist a RuleHit object. Never raises."""
+        """Persist a RuleHit object. Persistence errors are logged and re-raised."""
         try:
             ts_value = (
                 getattr(hit, "timestamp", None)
@@ -131,9 +145,14 @@ class StorageWriter:
                 session.add(record)
                 session.flush()
                 return record.id
-        except Exception as exc:  # pragma: no cover - explicit non-raising contract
-            logger.warning("Failed to write rule hit to SQLite (non-fatal): %s", exc)
-            return None
+        except Exception as exc:
+            logger.error(
+                "Failed to write rule hit to SQLite [%s]: %s",
+                type(exc).__name__,
+                exc,
+                exc_info=True,
+            )
+            raise
 
     def write_alert_from_hit(
         self,
@@ -142,7 +161,7 @@ class StorageWriter:
         event_id: int | None,
         raw_event: Any,
     ) -> int | None:
-        """Persist one alert for one rule hit. Never raises."""
+        """Persist one alert for one rule hit. Persistence errors are logged and re-raised."""
         try:
             payload: dict[str, Any] = {}
             if dataclasses.is_dataclass(raw_event):
@@ -182,6 +201,11 @@ class StorageWriter:
                 session.add(record)
                 session.flush()
                 return record.id
-        except Exception as exc:  # pragma: no cover - explicit non-raising contract
-            logger.warning("Failed to write alert to SQLite (non-fatal): %s", exc)
-            return None
+        except Exception as exc:
+            logger.error(
+                "Failed to write alert to SQLite [%s]: %s",
+                type(exc).__name__,
+                exc,
+                exc_info=True,
+            )
+            raise

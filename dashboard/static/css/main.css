@@ -1428,3 +1428,239 @@ details summary:hover {
   padding: 0.75rem 0;
   text-align: center;
 }
+
+/* ======================================================
+   Phase 6B — ML Insights page
+   ====================================================== */
+
+.ml-insights-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+/* --- Section card --- */
+.ml-section {
+  padding: 1.25rem 1.5rem;
+}
+
+.ml-section-placeholder {
+  opacity: 0.65;
+}
+
+/* --- Section header --- */
+.ml-section-header {
+  margin-bottom: 1rem;
+}
+
+.ml-section-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.3rem;
+}
+
+.ml-model-icon {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.ml-section-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.ml-section-title-muted {
+  color: var(--text-secondary);
+}
+
+.ml-training-date {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-left: 2.15rem;
+}
+
+/* --- Status badges --- */
+.ml-status-badge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.2rem 0.55rem;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+
+.ml-status-active {
+  color: var(--sev-low);
+  background: var(--sev-low-bg);
+}
+
+.ml-status-pending {
+  color: var(--sev-medium);
+  background: var(--sev-medium-bg);
+}
+
+.ml-status-future {
+  color: var(--text-muted);
+  background: var(--bg-hover);
+}
+
+/* --- Stats row --- */
+.ml-stats-row {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.5rem;
+}
+
+.ml-stat-card {
+  flex: 1 1 120px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  text-align: center;
+  min-width: 100px;
+}
+
+.ml-stat-value {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.ml-stat-label {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-top: 0.2rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* --- Distribution section --- */
+.ml-distribution-section {
+  margin-bottom: 1.75rem;
+}
+
+.ml-subsection-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0 0 0.75rem 0;
+}
+
+.ml-distribution-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.ml-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.8rem;
+}
+
+.ml-bar-label {
+  width: 5.5rem;
+  flex-shrink: 0;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.78rem;
+}
+
+.ml-bar-track {
+  flex: 1;
+  height: 14px;
+  background: var(--bg-hover);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.ml-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+  min-width: 2px;
+}
+
+.ml-range-normal    { background: var(--sev-low); }
+.ml-range-elevated  { background: var(--sev-medium); }
+.ml-range-anomalous { background: var(--sev-high); }
+
+.ml-bar-count {
+  width: 6rem;
+  flex-shrink: 0;
+  text-align: right;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.78rem;
+}
+
+.ml-bar-pct {
+  color: var(--text-muted);
+}
+
+.ml-distribution-legend {
+  margin-top: 0.6rem;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+}
+
+.ml-legend-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+/* --- Trend chart --- */
+.ml-trend-section {
+  margin-bottom: 0.5rem;
+}
+
+.ml-trend-chart-container {
+  min-height: 200px;
+}
+
+.ml-trend-empty {
+  text-align: center;
+  padding: 2rem;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  border: 1px dashed var(--border-color);
+  border-radius: 6px;
+}
+
+/* --- No-data banner (model trained but no scored events yet) --- */
+.ml-no-data-banner {
+  background: var(--bg-secondary);
+  border: 1px dashed var(--border-color);
+  border-radius: 6px;
+  padding: 1rem 1.25rem;
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+}
+
+.ml-no-data-banner p {
+  margin: 0;
+}
+
+/* --- Random Forest placeholder note --- */
+.ml-placeholder-note {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin: 0;
+  line-height: 1.6;
+}

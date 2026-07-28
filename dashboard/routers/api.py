@@ -550,10 +550,22 @@ def search(
 
 @router.get("/ml-status")
 def ml_status() -> dict[str, Any]:
-    """Return fixed Phase 3 ML placeholder status."""
+    """Return live ML model status from model_scores and the artifact file."""
+    from dashboard.services.ml_insights_service import get_isolation_forest_status
+
+    if_status = get_isolation_forest_status()
+    models_trained = if_status["trained"]
     return {
-        "models_trained": False,
-        "isolation_forest": None,
+        "models_trained": models_trained,
+        "isolation_forest": {
+            "trained": if_status["trained"],
+            "scored_events": if_status["total_scored"],
+            "training_date": if_status["training_date"],
+        },
         "random_forest": None,
-        "message": "No models trained yet. ML scoring available after Phase 6B/7B.",
+        "message": (
+            f"Isolation Forest active — {if_status['total_scored']:,} events scored."
+            if models_trained
+            else "No models trained yet. ML scoring available after Phase 6B/7B."
+        ),
     }

@@ -1060,3 +1060,390 @@ print('Smoke test PASS')
 After running Phase 6A benign baseline collection, use command 5 above
 to export the labeled benign CSV that Phase 6B (Isolation Forest
 training) will consume directly.
+
+---
+
+## Phase 6B — Isolation Forest Training & Real-Time Scoring
+
+Phase 6B adds Isolation Forest model training (offline, host-side) and real-time
+scoring integration (pipeline hook writing to `model_scores`). VM verification
+commands for training, `model_scores` inspection, and the ML Insights dashboard
+will be appended here in Subphases 2–4 as each is implemented.
+
+**Phase 6B Subphase 0 — Setup (2026-07-28):**
+- `docs/decisions_log.md` created — project-wide permanent decisions log.
+- Baseline test count confirmed: **514 passed, 0 failed**.
+- No new VM commands at this stage; see later subphase entries below.
+
+**Phase 6B Subphase 2 — Train Isolation Forest (2026-07-28):**
+
+Run offline on either host or VM (requires benign_baseline.csv):
+
+```bat
+python_runtime\python.exe -m ml.training.train_isolation_forest
+```
+
+Artifact saved to: `ml\models\isolation_forest.joblib`
+
+Verify artifact after training:
+
+```bat
+python_runtime\python.exe -c "
+from ml.training.train_isolation_forest import load_artifact, MODEL_PATH
+a = load_artifact(MODEL_PATH)
+print('Keys:', list(a.keys()))
+print('Features:', len(a['feature_names']))
+print('train_score_min:', a['train_score_min'])
+print('train_score_max:', a['train_score_max'])
+print('Model type:', type(a['model']).__name__)
+"
+```
+
+Expected: Keys include model/train_score_min/train_score_max/feature_names, 30 features, IsolationForest.
+
+**Phase 6B Subphase 3 — Real-Time Scoring Integration (2026-07-28):**
+
+The pipeline now scores every Sysmon event through the Isolation Forest model
+and writes results to `model_scores` in real time. The model is loaded **once**
+at pipeline startup, not per-event.
+
+**1. Start the pipeline on the VM (scoring active if model is loaded):**
+
+```bat
+cd C:\ShadowSensor
+python_runtime\python.exe scripts\run_pipeline.py
+```
+
+Expected startup output (after rule load + DB init):
+```
+[INFO] Isolation Forest scorer loaded — per-event scoring active.
+```
+
+If the model artifact is missing, you will see a WARNING and scoring will be
+disabled but the pipeline will still run.
+
+**2. Verify model_scores rows are being written (run while pipeline is active):**
+
+```bat
+python_runtime\python.exe -c "
+import sqlite3
+conn = sqlite3.connect(r'C:\ShadowSensor\data\shadowsensor.db')
+conn.row_factory = sqlite3.Row
+rows = conn.execute(
+    'SELECT ms.id, ms.event_fk, ms.model_type, ms.score, ms.timestamp, '
+    'e.event_type_id '
+    'FROM model_scores ms '
+    'JOIN events e ON ms.event_fk = e.id '
+    'ORDER BY ms.id DESC LIMIT 20'
+).fetchall()
+conn.close()
+print(f'Total model_scores rows: ', end='')
+conn2 = sqlite3.connect(r'C:\ShadowSensor\data\shadowsensor.db')
+print(conn2.execute(\"SELECT COUNT(*) FROM model_scores\").fetchone()[0])
+conn2.close()
+for r in rows:
+    print(f'  id={r[\"id\"]} event_fk={r[\"event_fk\"]} eid={r[\"event_type_id\"]} '
+          f'model={r[\"model_type\"]} score={r[\"score\"]:.4f} ts={r[\"timestamp\"]}')
+"
+```
+
+Expected: rows with `model_type=isolation_forest`, scores in [0.0, 1.0], correct
+`event_fk` linking back to an event row.
+
+**3. Check score distribution across model_scores:**
+
+```bat
+python_runtime\python.exe -c "
+import sqlite3, statistics
+conn = sqlite3.connect(r'C:\ShadowSensor\data\shadowsensor.db')
+scores = [r[0] for r in conn.execute('SELECT score FROM model_scores WHERE model_type=\"isolation_forest\"').fetchall()]
+conn.close()
+if scores:
+    print(f'Count: {len(scores)}')
+    print(f'Min:   {min(scores):.4f}')
+    print(f'Max:   {max(scores):.4f}')
+    print(f'Mean:  {statistics.mean(scores):.4f}')
+    print(f'Median:{statistics.median(scores):.4f}')
+else:
+    print('No model_scores rows yet — ensure pipeline is running and events are flowing.')
+"
+```
+
+**4. Confirm event_fk linkage integrity:**
+
+```bat
+python_runtime\python.exe -c "
+import sqlite3
+conn = sqlite3.connect(r'C:\ShadowSensor\data\shadowsensor.db')
+orphan = conn.execute(
+    'SELECT COUNT(*) FROM model_scores ms '
+    'LEFT JOIN events e ON ms.event_fk = e.id '
+    'WHERE e.id IS NULL'
+).fetchone()[0]
+conn.close()
+print(f'Orphan model_scores rows (should be 0): {orphan}')
+"
+```
+
+Expected: 0 orphan rows.
+
+---
+
+## Phase 6B Subphase 4 — ML Insights Dashboard Verification
+
+**Prerequisites:** Pipeline running with scored events in `model_scores`
+(Subphase 3 verified). Dashboard running on port 8080.
+
+### In-browser checks required (Ayush must do these on the VM)
+
+**1. Load the ML Insights page:**
+
+Open a browser on the VM and navigate to:
+
+```
+http://localhost:8080/dashboard/ml-insights
+```
+
+**Check the following:**
+
+| Item | Expected |
+|------|----------|
+| Page loads without 500 error | ✅ HTTP 200 |
+| Isolation Forest section header visible | "Isolation Forest" heading with status badge |
+| Status badge text | "● Active" (green) when model_scores rows exist |
+| Model artifact date shown | "Model artifact: YYYY-MM-DD HH:MM UTC" |
+| Events Scored stat card | Should show ~6,777 or current count |
+| Min/Max/Mean/Median stat cards | Non-null values in [0.0, 1.0] range |
+| Score distribution bars visible | 10 horizontal bars with count/pct |
+| Distribution color coding | Green (0.0–0.3), Yellow (0.3–0.6), Orange (0.6–1.0) |
+| Score Trend chart renders | ApexCharts area chart with last-24h data |
+| Trend chart X-axis labels | Hourly timestamps (e.g. "10:00", "11:00") |
+| Random Forest section present | "Random Forest" heading with "○ Phase 7B" badge |
+| Random Forest placeholder text | Mentions "Phase 7B" |
+| No console errors | Open DevTools (F12) → Console tab, no red errors |
+
+**2. Theme toggle check (dark and light):**
+
+Click the ☀ theme toggle button in the sidebar footer.
+
+| Item | Dark theme | Light theme |
+|------|------------|-------------|
+| Page background | Dark (#0f1117) | Light (#f0f2f8) |
+| Text visible | ✅ white/light text | ✅ dark text |
+| Stat card borders visible | ✅ dark border | ✅ light border |
+| Distribution bars visible | ✅ colored bars readable | ✅ colored bars readable |
+| Trend chart redraws | ✅ chart theme updates | ✅ chart theme updates |
+| No invisible text (white-on-white or black-on-black) | ✅ | ✅ |
+
+Toggle back to dark mode after verifying light mode.
+
+**3. Verify the API endpoint directly:**
+
+```bat
+curl http://localhost:8080/api/v1/ml-status
+```
+
+Expected response when model_scores is populated:
+
+```json
+{
+  "models_trained": true,
+  "isolation_forest": {
+    "trained": true,
+    "scored_events": <count>,
+    "training_date": "YYYY-MM-DD HH:MM UTC"
+  },
+  "random_forest": null,
+  "message": "Isolation Forest active — N events scored."
+}
+```
+
+**4. Confirm all other dashboard pages still load (regression check):**
+
+Navigate to each of these pages and confirm HTTP 200 / no console errors:
+
+```
+http://localhost:8080/dashboard/home
+http://localhost:8080/dashboard/alerts
+http://localhost:8080/dashboard/events
+http://localhost:8080/dashboard/process-tree
+http://localhost:8080/dashboard/search
+http://localhost:8080/dashboard/rules
+http://localhost:8080/dashboard/killchain
+http://localhost:8080/dashboard/settings
+```
+
+---
+
+## Phase 6B Subphase 5 — End-to-End Verification (Full System)
+
+**Prerequisites:** All Phase 6B Subphase 3 and Subphase 4 checks passed. Pipeline and
+dashboard both start cleanly per the sequences above.
+
+This section covers the full end-to-end chain verification: Sysmon → Collector → Normalizer
+→ Rule Engine → Storage → Scoring → `model_scores` → ML Insights dashboard.
+
+---
+
+### Step 1 — Start pipeline and dashboard together
+
+Open two separate command-prompt windows on the VM.
+
+**Window 1 — Pipeline:**
+```bat
+cd Z:\filelessmalware
+python_runtime\python.exe scripts\run_pipeline.py
+```
+
+**Window 2 — Dashboard:**
+```bat
+cd Z:\filelessmalware
+python_runtime\python.exe -m uvicorn dashboard.app:app --host 0.0.0.0 --port 8080 --reload
+```
+
+Wait for both to report clean startup (no errors). Pipeline should print the Isolation Forest
+model load confirmation:
+
+```
+INFO     EventScorer: Isolation Forest model loaded from ml/models/isolation_forest.joblib
+```
+
+If instead you see:
+
+```
+WARNING  EventScorer: model artifact not found at ml/models/isolation_forest.joblib — scoring disabled
+```
+
+Then retrain the model first (see Phase 6B Subphase 2 section above).
+
+---
+
+### Step 2 — Generate real Sysmon events
+
+Perform normal benign activity for 2–3 minutes:
+- Open a browser, navigate to a few sites (HTTPS)
+- Open Notepad, type a few lines
+- Open File Explorer, navigate directories
+
+This causes Sysmon to emit EID 1, 3, 7, 10 events which the collector will receive,
+normalize, and persist with scores.
+
+---
+
+### Step 3 — Confirm events are being scored in real time
+
+In a third command-prompt window:
+
+```bat
+python_runtime\python.exe -c "
+import sqlite3, time
+conn = sqlite3.connect(r'C:\ShadowSensor\data\shadowsensor.db')
+count_before = conn.execute('SELECT COUNT(*) FROM model_scores').fetchone()[0]
+print(f'model_scores rows before: {count_before}')
+time.sleep(10)
+count_after = conn.execute('SELECT COUNT(*) FROM model_scores').fetchone()[0]
+print(f'model_scores rows after 10s: {count_after}')
+print(f'New rows written: {count_after - count_before}')
+conn.close()
+"
+```
+
+Expected: `New rows written` should be > 0 while real activity is occurring.
+
+---
+
+### Step 4 — Confirm event_fk linkage and score sanity
+
+```bat
+python_runtime\python.exe -c "
+import sqlite3
+conn = sqlite3.connect(r'C:\ShadowSensor\data\shadowsensor.db')
+# Orphan check
+orphan = conn.execute(
+    'SELECT COUNT(*) FROM model_scores ms '
+    'LEFT JOIN events e ON ms.event_fk = e.id '
+    'WHERE e.id IS NULL'
+).fetchone()[0]
+print(f'Orphan model_scores rows (should be 0): {orphan}')
+# Distribution check
+rows = conn.execute(
+    'SELECT MIN(score), MAX(score), AVG(score), COUNT(*) '
+    'FROM model_scores WHERE model_type=\"isolation_forest\"'
+).fetchone()
+print(f'Min={rows[0]:.4f}  Max={rows[1]:.4f}  Mean={rows[2]:.4f}  Count={rows[3]}')
+conn.close()
+"
+```
+
+Expected:
+- Orphan rows = 0
+- Min in [0.0, 1.0], Max in [0.0, 1.0]
+- No scores exactly 0.0 for all rows (would indicate clipping/degenerate scoring)
+
+---
+
+### Step 5 — Confirm end-to-end in ML Insights dashboard
+
+Open a browser on the VM:
+
+```
+http://localhost:8080/dashboard/ml-insights
+```
+
+Verify:
+| Item | Expected |
+|------|----------|
+| Page loads without error | HTTP 200, no console errors |
+| Isolation Forest status badge | "● Active" (green) |
+| Events Scored count matches DB | Should match `SELECT COUNT(*) FROM model_scores` |
+| Score distribution bars | Non-empty, color-coded (green/yellow/orange) |
+| Score Trend chart | At least one data point with real hourly averages |
+| Random Forest section | "○ Phase 7B" placeholder — correct |
+
+---
+
+### Step 6 — Confirm all 8 other dashboard pages (regression)
+
+Navigate to each existing dashboard page and confirm no 500 errors:
+
+```
+http://localhost:8080/dashboard/home
+http://localhost:8080/dashboard/alerts
+http://localhost:8080/dashboard/events
+http://localhost:8080/dashboard/process-tree
+http://localhost:8080/dashboard/search
+http://localhost:8080/dashboard/rules
+http://localhost:8080/dashboard/killchain
+http://localhost:8080/dashboard/settings
+```
+
+All should return HTTP 200 with no console errors.
+
+---
+
+### Step 7 — Retrain the model (if ever needed)
+
+If `ml/models/isolation_forest.joblib` is deleted or becomes stale:
+
+```bat
+cd Z:\filelessmalware
+python_runtime\python.exe ml\training\train_isolation_forest.py
+```
+
+Expected output:
+
+```
+Training Isolation Forest on 621 rows, 30 features...
+Model trained. Score distribution on training set:
+  Min:    ...
+  Max:    ...
+  Mean:   ...
+  Median: ...
+Saving model + bounds to ml/models/isolation_forest.joblib
+Done.
+```
+
+After retraining, restart the pipeline (`run_pipeline.py`) so it loads the new artifact.
+
+---
+

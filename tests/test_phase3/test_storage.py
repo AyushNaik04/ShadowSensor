@@ -171,7 +171,9 @@ def test_full_cycle_inserts_one_row_each(in_memory_db) -> None:
         assert session.query(AlertRecord).count() == 1
 
 
-def test_write_event_db_exception_returns_none(monkeypatch: pytest.MonkeyPatch, in_memory_db) -> None:
+def test_write_event_db_exception_is_logged_and_reraised(
+    monkeypatch: pytest.MonkeyPatch, in_memory_db, caplog: pytest.LogCaptureFixture
+) -> None:
     writer = StorageWriter()
 
     @contextmanager
@@ -180,4 +182,9 @@ def test_write_event_db_exception_returns_none(monkeypatch: pytest.MonkeyPatch, 
         yield
 
     monkeypatch.setattr("storage.storage_writer.get_session", _broken_session)
-    assert writer.write_event(_mock_event()) is None
+    with caplog.at_level("ERROR"):
+        with pytest.raises(RuntimeError, match="forced failure"):
+            writer.write_event(_mock_event())
+    assert "Failed to write event to SQLite" in caplog.text
+    assert "RuntimeError" in caplog.text
+    assert "forced failure" in caplog.text

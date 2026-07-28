@@ -163,7 +163,10 @@ def test_dashboard_ml_insights_returns_200(e2e_client) -> None:
     client, _, _ = e2e_client
     response = client.get("/dashboard/ml-insights")
     assert response.status_code == 200
-    assert "Not Yet Trained" in response.text
+    # Phase 6B Subphase 4: placeholder text replaced with real data sections.
+    # Empty test DB → no model_scores rows → "Awaiting Data" status badge shown.
+    assert "Isolation Forest" in response.text
+    assert "Random Forest" in response.text
 
 
 def test_dashboard_rules_returns_200(e2e_client) -> None:

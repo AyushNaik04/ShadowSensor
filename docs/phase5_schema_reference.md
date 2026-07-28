@@ -86,3 +86,57 @@ The extractor must branch per-EID on this, not assume one constant key name.
   confirmed, accepted, pre-existing limitation inherited from Phase 4B
   (Issues 2/6, environmentally limited; Issue 4, open/inconclusive),
   not a new gap introduced in Phase 5.
+
+## Feature extraction time-window scoping (--since / --until)
+
+Additive CLI/pipeline filter on `scripts/run_feature_extraction.py` and
+`ml/features/pipeline.py` (FeatureExtractionPipeline.run). Applies the
+same bounds to both the `events` and `rule_hits` reads. `ORDER BY
+timestamp ASC` is preserved on both queries.
+
+### CLI arguments
+- `--since` — optional inclusive lower bound on `timestamp`
+- `--until` — optional inclusive upper bound on `timestamp`
+
+Accepted input formats:
+- `YYYY-MM-DD HH:MM:SS`
+- `YYYY-MM-DD HH:MM:SS.ffffff` (fractional seconds)
+- ISO-8601 with `T`: `YYYY-MM-DDTHH:MM:SS[.ffffff]`
+
+Stored `events.timestamp` values are TEXT of the form
+`YYYY-MM-DD HH:MM:SS.ffffff` (space separator, six-digit zero-padded
+microseconds). CLI bounds with a `T` separator are normalized to a
+space before binding so they remain lexicographically comparable to
+stored rows.
+
+### Boundary semantics
+Inclusive on both ends: `timestamp >= since AND timestamp <= until`.
+An event stamped exactly at either bound is included.
+
+### No default lookback
+`--since` and `--until` are optional. Omitting both preserves the prior
+all-time behavior exactly (no automatic lookback window of any kind;
+no silent narrowing of the no-argument case).
+
+### --since / --until asymmetry (intentional)
+
+`--until` is padded to `.999999` **only** when the user supplies a
+whole-second value with **no** fractional/microsecond component (plain
+`YYYY-MM-DD HH:MM:SS` or `...THH:MM:SS`). That padding makes inclusive
+`timestamp <= until` include every stored event within that final
+second under lexicographic TEXT comparison against microsecond-precision
+rows (otherwise `...SS.123456` would sort after bare `...SS` and be
+excluded).
+
+If `--until` is given **with** an explicit fractional component, that
+value is used as given (normalized to six-digit microseconds) — no
+`.999999` padding.
+
+`--since` needs **no** such padding: a bare second-precision lower bound
+already naturally includes that whole second under lexicographic TEXT
+comparison, because any `...SS.ffffff` row sorts greater than or equal
+to bare `...SS`.
+
+Malformed `--since` / `--until` values fail with a clear `[ERROR]` on
+stderr and exit code 2 **before** any database query runs.
+

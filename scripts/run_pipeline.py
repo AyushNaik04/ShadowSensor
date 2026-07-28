@@ -18,9 +18,12 @@ from rules.schema import RuleHit
 from storage.database import init_db
 from storage.storage_writer import StorageWriter
 from alerting.alert_manager import AlertManager
+from ml.scoring.scorer import EventScorer
+from ml.training.train_isolation_forest import MODEL_PATH
 
 import logging
 logging.basicConfig(level=logging.INFO, format="%(message)s")
+logger = logging.getLogger(__name__)
 _corr_logger = logging.getLogger("shadowsensor.corroboration")
 
 
@@ -87,6 +90,101 @@ def _format_hit(hit: RuleHit, event: Any) -> str:
     return " | ".join(parts)
 
 
+def persist_pipeline_event(
+    event: Any,
+    hits: list[Any],
+    storage_writer: StorageWriter,
+    alert_manager: AlertManager,
+) -> int | None:
+    """Always persist the event; persist rule hits/alerts only when hits exist.
+
+    Benign zero-hit events must still create an events row for Phase 6A feature
+    extraction. Callers may wrap this in their own error handling.
+    """
+    event_db_id = storage_writer.write_event(event)
+    for hit in hits:
+        hit_db_id = storage_writer.write_rule_hit(hit, event_db_id)
+        alert_manager.process_hit(hit, hit_db_id, event_db_id, event)
+    return event_db_id
+
+
+def handle_persist_pipeline_event(
+    event: Any,
+    hits: list[Any],
+    storage_writer: StorageWriter,
+    alert_manager: AlertManager,
+) -> bool:
+    """Persist event/hits; log failures visibly without crashing the collector.
+
+    Returns:
+        True if persistence succeeded, False if a failure was logged and swallowed
+        at the pipeline boundary (non-fatal).
+    """
+    try:
+        persist_pipeline_event(event, hits, storage_writer, alert_manager)
+        return True
+    except Exception as exc:
+        logger.error(
+            "SQLite persistence failed (non-fatal) [%s]: %s",
+            type(exc).__name__,
+            exc,
+            exc_info=True,
+        )
+        return False
+
+
+def handle_persist_and_score_event(
+    event: Any,
+    hits: list[Any],
+    storage_writer: StorageWriter,
+    alert_manager: AlertManager,
+    scorer: "EventScorer | None",
+) -> bool:
+    """Persist event/hits, then score via Isolation Forest and write to model_scores.
+
+    Persistence failure is logged with full detail and swallowed at the pipeline
+    boundary (non-fatal), matching handle_persist_pipeline_event behaviour.
+    Scoring failure is also logged visibly but never crashes the collector thread.
+
+    IMPORTANT: No failure path may silently swallow an exception without a
+    logger.error call — this is the Phase 6A lesson (silent swallowing hid
+    15 days of data loss).
+
+    Args:
+        scorer: Live EventScorer instance, or None when the model was not loaded
+            at startup (scoring is skipped but persistence still runs).
+
+    Returns:
+        True if persistence succeeded (scoring outcome does not affect return value).
+        False if persistence failed.
+    """
+    try:
+        event_db_id = persist_pipeline_event(event, hits, storage_writer, alert_manager)
+    except Exception as exc:
+        logger.error(
+            "SQLite persistence failed (non-fatal) [%s]: %s",
+            type(exc).__name__,
+            exc,
+            exc_info=True,
+        )
+        return False
+
+    if scorer is not None and event_db_id is not None:
+        try:
+            score = scorer.score_and_persist(event, event_db_id)
+            if score is not None:
+                logger.debug("[scorer] event_fk=%d score=%.4f", event_db_id, score)
+        except Exception as exc:
+            logger.error(
+                "[scorer] Unexpected scoring error (non-fatal) [%s]: %s",
+                type(exc).__name__,
+                exc,
+                exc_info=True,
+            )
+
+    return True
+
+
 def main() -> int:
     print("=" * 60)
     print("ShadowSensor Pipeline — Live Mode")
@@ -120,6 +218,21 @@ def main() -> int:
     _storage_writer = StorageWriter()
     _alert_manager = AlertManager(_storage_writer)
 
+    # Phase 6B — load Isolation Forest scorer once at startup (not per-event).
+    # A missing artifact means training has not been run yet; log visibly and
+    # continue without scoring (pipeline remains fully functional).
+    _scorer: EventScorer | None = None
+    try:
+        _scorer = EventScorer()
+        print("[INFO] Isolation Forest scorer loaded — per-event scoring active.")
+    except FileNotFoundError:
+        logger.warning(
+            "[scorer] Isolation Forest model not found at %s — "
+            "per-event scoring is disabled. "
+            "Run ml/training/train_isolation_forest.py to enable scoring.",
+            MODEL_PATH,
+        )
+
     def on_event(event: Any) -> None:
         hits = engine.evaluate(event)
 
@@ -128,23 +241,19 @@ def main() -> int:
         if corr.has_findings:
             log_corroboration(event, hits, corr, log=_corr_logger)
 
-        if not hits:
-            return
-
-        for hit in hits:
-            line = _format_hit(hit, event)
-            print(line)
-            log_file.write(line + "\n")
-            log_file.flush()
+        if hits:
+            for hit in hits:
+                line = _format_hit(hit, event)
+                print(line)
+                log_file.write(line + "\n")
+                log_file.flush()
 
         # Phase 3 — persist to SQLite (additive; does not affect pipeline behaviour)
-        try:
-            _event_db_id = _storage_writer.write_event(event)
-            for _hit in hits:
-                _hit_db_id = _storage_writer.write_rule_hit(_hit, _event_db_id)
-                _alert_manager.process_hit(_hit, _hit_db_id, _event_db_id, event)
-        except Exception as _exc:
-            logger.warning("SQLite persistence failed (non-fatal): %s", _exc)
+        # Always write the event, including benign zero-hit events needed for Phase 6A.
+        # Failures are logged with full detail but must not kill the collector thread.
+        # Phase 6B — Isolation Forest scoring integrated here; failures logged visibly,
+        # never silently swallowed.
+        handle_persist_and_score_event(event, hits, _storage_writer, _alert_manager, _scorer)
 
     poller = None
     try:

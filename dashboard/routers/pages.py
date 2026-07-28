@@ -453,13 +453,42 @@ def partial_search_rows(
 
 @router.get("/dashboard/ml-insights", response_class=HTMLResponse)
 def dashboard_ml_insights(request: Request) -> HTMLResponse:
-    """Render the ML Insights placeholder page."""
+    """Render the ML Insights page with live Isolation Forest data."""
+    import json as _json
+
+    from dashboard.services.ml_insights_service import (
+        get_isolation_forest_status,
+        get_score_trend,
+    )
+
+    try:
+        isolation_forest = get_isolation_forest_status()
+    except Exception:
+        isolation_forest = {
+            "trained": False,
+            "training_date": None,
+            "total_scored": 0,
+            "score_min": None,
+            "score_max": None,
+            "score_mean": None,
+            "score_median": None,
+            "brackets": [],
+        }
+
+    try:
+        trend_data = get_score_trend(hours=24)
+    except Exception:
+        trend_data = []
+
     return TEMPLATES.TemplateResponse(
         request,
         "ml_insights.html",
         {
             "request": request,
             "active_page": "ml_insights",
+            "isolation_forest": isolation_forest,
+            "random_forest": {"trained": False},
+            "trend_data_json": _json.dumps(trend_data),
         },
     )
 
