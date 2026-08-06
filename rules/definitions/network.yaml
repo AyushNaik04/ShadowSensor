@@ -227,14 +227,18 @@
     - field: image
       operator: not_ends_with_any
       values:
-        - "chrome.exe"
-        - "msedge.exe"
-        - "firefox.exe"
-        - "iexplore.exe"
-        - "brave.exe"
-        - "SearchApp.exe"
-        - "msmpeng.exe"
-        - "svchost.exe"
+        - "chrome.exe"       # browser CDN/ad-tech long hostnames — precedent-based, no VM-confirmed incident
+        - "msedge.exe"       # browser CDN/ad-tech long hostnames — precedent-based, no VM-confirmed incident
+        - "firefox.exe"      # browser CDN/ad-tech long hostnames — precedent-based, no VM-confirmed incident
+        - "iexplore.exe"     # browser CDN/ad-tech long hostnames — precedent-based, no VM-confirmed incident
+        - "brave.exe"        # browser CDN/ad-tech long hostnames — precedent-based, no VM-confirmed incident
+        - "SearchApp.exe"    # CONFIRMED FP — Phase 4B, 3 occurrences, footprintdns.com Azure telemetry
+        - "msmpeng.exe"      # Defender cloud/MAPS reputation lookups — precedent-based, no VM-confirmed incident
+        - "svchost.exe"      # CONFIRMED FP — netseer-ipaddr-assoc...fbcdn.net (70 chars), Android/WSA subsystem telemetry.
+                              # NOTE: blanket exclusion — a compromised svchost.exe issuing genuine
+                              # DNS-tunneling queries would also be excluded here. Accepted tradeoff;
+                              # compensating coverage exists via CHAIN_SCHEDULED_TASK_SVCHOST_001 and
+                              # the API_CRT_* injection rules, not this rule. See research paper Section 2.
 
 - id: NET_DNS_SCRIPT_ENGINE_001
   name: Script Host or Shell Process Making DNS Resolution
@@ -260,3 +264,36 @@
         - "wscript.exe"
         - "cscript.exe"
         - "mshta.exe"
+
+- id: NET_SCRIPT_ENGINE_OUTBOUND_001
+  name: Script Engine Outbound Network Connection
+  description: >
+    Detects wscript.exe, cscript.exe, or mshta.exe making outbound TCP/UDP
+    network connections via EID-3 (NetworkConnect). These processes have no
+    legitimate reason to initiate outbound network connections. Any outbound
+    connection from these processes is a strong indicator of C2 callback,
+    download cradle execution, or data exfiltration activity.
+    This rule provides EID-3-based coverage complementing NET_DNS_SCRIPT_ENGINE_001
+    (EID-22), which is subject to Sysmon identity resolution failures in this
+    environment. EID-3 identity resolution is more reliable as the process is
+    already registered by the time a TCP connection is established.
+    Documented families: QakBot (wscript.exe C2 callbacks per Elastic Security
+    Labs), Emotet (mshta.exe network activity per VMware threat intel), IcedID
+    (cscript.exe outbound connections per FortiGuard analysis).
+    Note: powershell.exe is intentionally excluded — covered by
+    NET_POWERSHELL_HTTP_001 with benign hostname exclusions already in place.
+  mitre_technique: T1071.001
+  mitre_tactic: Command and Control
+  severity: High
+  event_ids: [3]
+  logic: AND
+  conditions:
+    - field: image
+      operator: ends_with_any
+      values:
+        - '\wscript.exe'
+        - '\cscript.exe'
+        - '\mshta.exe'
+    - field: initiated
+      operator: equals
+      value: "true"

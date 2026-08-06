@@ -186,16 +186,22 @@
 - id: CHAIN_SCHEDULED_TASK_SCRIPT_001
   name: Scheduled Task Host Spawning Script with Network or Execution Markers
   description: >
-    Detects a Windows Task Scheduler host process (taskeng.exe, taskhostw.exe,
-    or schtasks.exe) spawning a scripting host that also carries a suspicious
-    command line — specifically network access, encoded content, or in-memory
-    execution keywords. Scheduled task execution of scripts is legitimate;
-    scheduled task execution of scripts that reach out to the network or decode
-    content at runtime is not. The command_line condition filters out the
-    legitimate scheduled maintenance tasks (which do not need to download
-    content) while preserving the signal for attacker-created persistence tasks.
-    Observed in Emotet, QBot, and other families that install scheduled tasks
-    as their primary persistence mechanism.
+    Detects a legacy Windows Task Scheduler host process (taskeng.exe or
+    taskhostw.exe) spawning a scripting host executing a script from a
+    user-writable or attacker-staging path. taskeng.exe covers pre-Windows 10
+    Version 1511 (legacy) execution; taskhostw.exe covers DLL-based task
+    execution on modern Windows 10/11. Detection is path-based rather than
+    keyword-based: malware families (QakBot, Emotet, IcedID) drop script
+    payloads to C:\Users\, C:\ProgramData\, C:\Windows\Temp\, or AppData\
+    before scheduling clean command lines that reference those local files —
+    no network or encoding keywords appear. Keyword-based detection misses
+    this documented two-stage pattern entirely. Known-benign exclusion:
+    cscript.exe running C:\Windows\system32\calluxxprovider.vbs is excluded
+    as a confirmed legitimate Windows maintenance path.
+    Note: schtasks.exe was removed from parent_image — it is the task
+    creation tool and never the true runtime parent of a payload process.
+    Modern svchost.exe -s Schedule execution is covered by the sibling rule
+    CHAIN_SCHEDULED_TASK_SVCHOST_001.
   mitre_technique: T1053.005
   mitre_tactic: Persistence
   severity: Medium
@@ -205,9 +211,8 @@
     - field: parent_image
       operator: contains_any
       values:
-        - "taskeng.exe"
-        - "taskhostw.exe"
-        - "schtasks.exe"
+        - "taskeng.exe"    # Legacy Task Scheduler host — Windows Vista/7/pre-1511
+        - "taskhostw.exe"  # DLL-based task host — still active on Windows 10/11
     - field: image
       operator: ends_with_any
       values:
@@ -218,14 +223,15 @@
     - field: command_line
       operator: contains_any
       values:
-        - "http://"
-        - "https://"
-        - "-enc"
-        - "-encoded"
-        - "downloadstring"
-        - "iex"
-        - "invoke-expression"
-        - "frombase64string"
+        - "C:\\Users\\"        # User-profile staging — Emotet, QakBot documented
+        - "C:\\ProgramData\\"  # ProgramData staging — QakBot AppPool.vbs, IcedID
+        - "C:\\Windows\\Temp\\" # Temp staging — documented across multiple families
+        - "C:\\Windows\\Tasks\\" # Task directory abuse
+        - "C:\\PerfLogs\\"     # Documented in Elastic production rule
+        - "AppData\\"          # User AppData staging — Emotet variant
+    - field: command_line
+      operator: not_contains
+      value: "C:\\Windows\\system32\\"  # Exclude known-benign calluxxprovider.vbs path
 
 - id: CHAIN_SCHEDULED_TASK_SVCHOST_001
   name: Task Scheduler Service Host Spawning Script with Network or Execution Markers

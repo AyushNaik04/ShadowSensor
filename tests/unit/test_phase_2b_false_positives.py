@@ -16,12 +16,6 @@ Rules covered and change summary:
             After:  access mask AND target ends_with_any [lsass, winlogon, csrss]
                     AND source not_ends_with_any [MsMpEng, csrss, lsass,
                     winlogon, wininit] — 0 FP hits on live-VM patterns.
-        API_CREATE_REMOTE_THREAD_001
-            Before: source_image regex ".+" — fired on chrome JIT threads
-                    and WerFault crash reporting (2 FP hits).
-            After:  requires not_same_basename AND source not in
-                    [WerFault, csrss] — 0 FP hits.
-
     HIGH-risk (pulled forward from Phase 4B, redesigned):
         PS_DOWNLOAD_CRADLE_001
             Before: PS image + download string alone — fired on benign admin
@@ -62,7 +56,6 @@ from pathlib import Path
 import pytest
 
 from normalizer.models import (
-    CreateRemoteThreadEvent,
     NetworkConnectEvent,
     OpenProcessEvent,
     ProcessCreateEvent,
@@ -132,24 +125,6 @@ def _make_open_process(**kwargs) -> OpenProcessEvent:
     return OpenProcessEvent(**defaults)
 
 
-def _make_crt(**kwargs) -> CreateRemoteThreadEvent:
-    defaults: dict = {
-        "event_id": 8,
-        "utc_time": "2026-06-23 10:00:00.000",
-        "computer": "AUDIT-HOST",
-        "source_process_id": 3000,
-        "source_image": "C:\\Windows\\System32\\powershell.exe",
-        "target_process_id": 4000,
-        "target_image": "C:\\Windows\\explorer.exe",
-        "new_thread_id": 5678,
-        "start_address": "0x7fff1234abcd",
-        "start_module": None,
-        "start_function": None,
-    }
-    defaults.update(kwargs)
-    return CreateRemoteThreadEvent(**defaults)
-
-
 EDGE   = r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
 CHROME = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
 PS     = r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
@@ -169,9 +144,6 @@ APPFRAMEHOST = r"C:\Windows\System32\ApplicationFrameHost.exe"
 RUNTIMEBROKER = r"C:\Windows\System32\RuntimeBroker.exe"
 WINSTORE = r"C:\Program Files\WindowsApps\WinStore.App.exe"
 PYTHON_RT = r"C:\python_runtime\python.exe"
-WERFAULT = r"C:\Windows\System32\WerFault.exe"
-
-
 @pytest.fixture(scope="module")
 def engine() -> RuleEngine:
     eng = RuleEngine(Path("rules"))
@@ -400,15 +372,6 @@ class TestOpenProcessRule:
         )
         assert _hits(engine, event, self.RULE)
 
-    def test_malicious_combo_in_compound_value_fires(self, engine: RuleEngine):
-        """0x1410 substring inside a compound access string still fires."""
-        event = _make_open_process(
-            source_image=r"C:\temp\injector.exe",
-            target_image=LSASS,
-            granted_access="0x1410|0x40",
-        )
-        assert _hits(engine, event, self.RULE)
-
     def test_malicious_msedge_targets_lsass_fires(self, engine: RuleEngine):
         """msedge->lsass 0x1410: compromised browser credential access must fire."""
         event = _make_open_process(
@@ -416,73 +379,133 @@ class TestOpenProcessRule:
         )
         assert _hits(engine, event, self.RULE)
 
+    # --- C3 path-anchored source exclusions (masquerade TP + genuine-path FP) ---
 
-# ===========================================================================
-# API_CREATE_REMOTE_THREAD_001
-# Redesigned: source_image ".+" AND not_same_basename AND source not in
-# [WerFault, csrss]
-# Before/after: old rule fired on any Event ID 8.
-# ===========================================================================
-
-class TestCreateRemoteThreadRule:
-    RULE = "API_CREATE_REMOTE_THREAD_001"
-
-    # --- Benign: must NOT fire ---
-
-    def test_chrome_sibling_jit_thread_does_not_fire(self, engine: RuleEngine):
-        """chrome->chrome same-image-name: renderer JIT thread creation (benign).
-        Before fix: fired. After fix: not_same_basename excludes it."""
-        event = _make_crt(source_image=CHROME, target_image=CHROME)
-        assert not _hits(engine, event, self.RULE), (
-            "Same-image-name CRT (Chrome JIT thread) must not fire"
-        )
-
-    def test_edge_sibling_does_not_fire(self, engine: RuleEngine):
-        """msedge->msedge same-image-name sandbox thread."""
-        event = _make_crt(source_image=EDGE, target_image=EDGE)
-        assert not _hits(engine, event, self.RULE)
-
-    def test_werfault_crash_reporting_does_not_fire(self, engine: RuleEngine):
-        """WerFault->msedge: Windows crash reporting injects diagnostic thread.
-        Before fix: fired. After fix: source exclusion covers WerFault."""
-        event = _make_crt(source_image=WERFAULT, target_image=EDGE)
-        assert not _hits(engine, event, self.RULE), (
-            "WerFault crash reporting must not fire (source exclusion)"
-        )
-
-    def test_csrss_session_thread_does_not_fire(self, engine: RuleEngine):
-        """csrss creating a session-management thread (source exclusion)."""
-        event = _make_crt(source_image=CSRSS, target_image=SVCHOST)
-        assert not _hits(engine, event, self.RULE)
-
-    # --- True positive: MUST fire ---
-
-    def test_cross_image_injection_fires(self, engine: RuleEngine):
-        """powershell->explorer.exe different basenames: classic injection."""
-        event = _make_crt()  # default: powershell->explorer
-        assert _hits(engine, event, self.RULE), (
-            "Cross-image CRT (powershell->explorer) MUST fire"
-        )
-
-    def test_implant_targets_svchost_fires(self, engine: RuleEngine):
-        """Unknown implant creating thread in svchost.exe."""
-        event = _make_crt(
-            source_image=r"C:\Users\User\AppData\Local\Temp\implant.exe",
-            target_image=SVCHOST,
-        )
-        assert _hits(engine, event, self.RULE)
-
-    def test_implant_targets_lsass_fires(self, engine: RuleEngine):
-        """Thread injection into lsass.exe — credential dumping technique."""
-        event = _make_crt(
-            source_image=r"C:\ProgramData\evil.exe",
+    def test_tp_fake_svchost_noncanonical_path_fires(self, engine: RuleEngine):
+        """Fake svchost.exe from non-canonical path must fire (masquerade TP)."""
+        event = _make_open_process(
+            source_image=r"C:\Users\Public\svchost.exe",
             target_image=LSASS,
+            granted_access="0x1410",
         )
         assert _hits(engine, event, self.RULE)
 
-    def test_event_id_1_does_not_match_crt_rule(self, engine: RuleEngine):
-        """ProcessCreate events (Event ID 1) must not match the CRT rule."""
-        assert not _hits(engine, _make_proc(), self.RULE)
+    def test_fp_genuine_csrss_standard_casing(self, engine: RuleEngine):
+        """Genuine csrss, standard casing — path-anchored exclusion."""
+        event = _make_open_process(
+            source_image=r"C:\Windows\System32\csrss.exe",
+            target_image=LSASS,
+            granted_access="0x1fffff",
+        )
+        assert not _hits(engine, event, self.RULE)
+
+    def test_fp_genuine_svchost_standard_casing(self, engine: RuleEngine):
+        """Genuine svchost, standard casing — path-anchored exclusion."""
+        event = _make_open_process(
+            source_image=r"C:\Windows\System32\svchost.exe",
+            target_image=WINLOGON,
+            granted_access="0x1fffff",
+        )
+        assert not _hits(engine, event, self.RULE)
+
+    def test_fp_genuine_svchost_mixed_casing(self, engine: RuleEngine):
+        """Genuine svchost, mixed casing (confirmed VM variant)."""
+        event = _make_open_process(
+            source_image=r"C:\WINDOWS\system32\svchost.exe",
+            target_image=LSASS,
+            granted_access="0x1fffff",
+        )
+        assert not _hits(engine, event, self.RULE)
+
+    def test_fp_genuine_wmiprvse_standard_casing(self, engine: RuleEngine):
+        """Genuine wmiprvse, standard casing — path-anchored exclusion."""
+        event = _make_open_process(
+            source_image=r"C:\Windows\System32\wbem\wmiprvse.exe",
+            target_image=WINLOGON,
+            granted_access="0x1410",
+        )
+        assert not _hits(engine, event, self.RULE)
+
+    def test_fp_genuine_wmiprvse_mixed_casing(self, engine: RuleEngine):
+        """Genuine wmiprvse, confirmed VM casing variant."""
+        event = _make_open_process(
+            source_image=r"C:\WINDOWS\system32\wbem\wmiprvse.exe",
+            target_image=LSASS,
+            granted_access="0x1410",
+        )
+        assert not _hits(engine, event, self.RULE)
+
+    def test_fp_genuine_vmtoolsd(self, engine: RuleEngine):
+        """Genuine vmtoolsd — path-anchored exclusion."""
+        event = _make_open_process(
+            source_image=r"C:\Program Files\VMware\VMware Tools\vmtoolsd.exe",
+            target_image=WINLOGON,
+            granted_access="0x1410",
+        )
+        assert not _hits(engine, event, self.RULE)
+
+    def test_fp_genuine_lsass_self_reference(self, engine: RuleEngine):
+        """Genuine lsass self-reference — path-anchored exclusion."""
+        event = _make_open_process(
+            source_image=r"C:\Windows\System32\lsass.exe",
+            target_image=LSASS,
+            granted_access="0x1fffff",
+        )
+        assert not _hits(engine, event, self.RULE)
+
+    def test_fp_genuine_winlogon(self, engine: RuleEngine):
+        """Genuine winlogon — path-anchored exclusion."""
+        event = _make_open_process(
+            source_image=r"C:\Windows\System32\winlogon.exe",
+            target_image=LSASS,
+            granted_access="0x1410",
+        )
+        assert not _hits(engine, event, self.RULE)
+
+    def test_fp_genuine_wininit(self, engine: RuleEngine):
+        """Genuine wininit — path-anchored exclusion."""
+        event = _make_open_process(
+            source_image=r"C:\Windows\System32\wininit.exe",
+            target_image=LSASS,
+            granted_access="0x1fffff",
+        )
+        assert not _hits(engine, event, self.RULE)
+
+    def test_fp_d30_svchost_opens_winlogon(self, engine: RuleEngine):
+        """D30 confirmed occurrence 1: svchost->winlogon 0x1fffff."""
+        event = _make_open_process(
+            source_image=r"C:\Windows\System32\svchost.exe",
+            target_image=r"C:\Windows\System32\winlogon.exe",
+            granted_access="0x1fffff",
+        )
+        assert not _hits(engine, event, self.RULE)
+
+    def test_fp_d30_svchost_opens_lsass(self, engine: RuleEngine):
+        """D30 confirmed occurrence 2: svchost->lsass 0x1fffff."""
+        event = _make_open_process(
+            source_image=r"C:\Windows\System32\svchost.exe",
+            target_image=r"C:\Windows\System32\lsass.exe",
+            granted_access="0x1fffff",
+        )
+        assert not _hits(engine, event, self.RULE)
+
+    def test_fp_wmiprvse_confirmed_pattern(self, engine: RuleEngine):
+        """wmiprvse confirmed pattern: wmiprvse->winlogon 0x1410."""
+        event = _make_open_process(
+            source_image=r"C:\Windows\System32\wbem\wmiprvse.exe",
+            target_image=r"C:\Windows\System32\winlogon.exe",
+            granted_access="0x1410",
+        )
+        assert not _hits(engine, event, self.RULE)
+
+    def test_fp_vmtoolsd_confirmed_pattern(self, engine: RuleEngine):
+        """vmtoolsd confirmed pattern: vmtoolsd->lsass 0x1410."""
+        event = _make_open_process(
+            source_image=r"C:\Program Files\VMware\VMware Tools\vmtoolsd.exe",
+            target_image=r"C:\Windows\System32\lsass.exe",
+            granted_access="0x1410",
+        )
+        assert not _hits(engine, event, self.RULE)
 
 
 # ===========================================================================

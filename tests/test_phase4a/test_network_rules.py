@@ -181,6 +181,14 @@ def test_net_dns_long_query_searchapp_excluded(engine: RuleEngine):
     assert not _hits(engine, event, "NET_DNS_LONG_QUERY_001")
 
 
+def test_net_dns_long_query_svchost_excluded(engine: RuleEngine):
+    event = _make_dns_event(
+        image=r"C:\Windows\System32\svchost.exe",
+        query_name="1ca672cc-660b-4018-b767-df3302a2ff4a-netseer-ipaddr-assoc.xz.fbcdn.net",
+    )
+    assert not _hits(engine, event, "NET_DNS_LONG_QUERY_001")
+
+
 def test_net_dns_long_query_threshold_edges_preserved(engine: RuleEngine):
     query_49_chars = ("a" * 37) + ".example.com"
     query_50_chars = ("a" * 38) + ".example.com"

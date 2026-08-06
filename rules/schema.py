@@ -103,6 +103,7 @@ VALID_OPERATORS: frozenset[str] = frozenset(
         "not_contains",
         "contains_any",
         "not_contains_any",     # Phase 2B: multi-value NOT for exclusion lists
+        "bits_any_set",         # Category A: bitwise access-mask match (all mask bits present)
         "ends_with_any",        # Phase 2B: multi-value suffix match
         "not_ends_with_any",    # Phase 2B: multi-value suffix exclusion
         "starts_with",
@@ -122,5 +123,5 @@ FIELD_REFERENCE_OPERATORS: frozenset[str] = frozenset(
 
 # Operators that use the values tuple (list-style)
 MULTI_VALUE_OPERATORS: frozenset[str] = frozenset(
-    {"contains_any", "not_contains_any", "ends_with_any", "not_ends_with_any"}
+    {"contains_any", "not_contains_any", "bits_any_set", "ends_with_any", "not_ends_with_any"}
 )

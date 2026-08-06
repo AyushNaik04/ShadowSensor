@@ -178,8 +178,8 @@ def test_case_insensitive_image_matching(engine: RuleEngine):
 
 
 def test_engine_rule_count(engine: RuleEngine):
-    """RuleEngine.rule_count equals 49 after scheduled-task split correction."""
-    assert engine.rule_count == 49
+    """RuleEngine.rule_count equals 51 after Category A network rule addition."""
+    assert engine.rule_count == 51
 
 
 def test_rule_hit_is_frozen_dataclass(engine: RuleEngine):

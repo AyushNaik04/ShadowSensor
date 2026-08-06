@@ -1,20 +1,15 @@
-- id: API_CREATE_REMOTE_THREAD_001
-  name: CreateRemoteThread Detected
+- id: API_CRT_SUSPICIOUS_SOURCE_001
+  name: CreateRemoteThread from Suspicious Source Process
   description: >
-    Detects CreateRemoteThread events where the source and target process have
-    different image names — the primary signal for classic code injection (a
-    foreign process writing a thread into another process's memory space).
-    Phase 2B hardening: added not_same_basename to exclude same-image-name
-    cross-process thread creation (e.g. Chrome/Edge renderer sandbox helpers,
-    JIT compiler threads within the same browser family) which is overwhelmingly
-    benign multi-process-application behaviour.  WerFault.exe and csrss.exe are
-    also excluded as source processes: WerFault legitimately injects a diagnostic
-    thread into crashing processes as part of Windows Error Reporting, and CSRSS
-    creates threads during session management.
-    Before/after: old rule fired on ANY Event ID 8 (source_image regex ".+"),
-    including chrome->chrome JIT threads and WerFault->crashing-app crash
-    reporting.  New rule requires different-image source/target pair from a
-    non-excluded source process.
+    Detects process injection via CreateRemoteThread where the source process
+    is a known suspicious category — Office applications, script engines,
+    LOLBins, browsers, or system utilities with no legitimate injection use
+    case. These processes have no business issuing CreateRemoteThread calls.
+    Fires regardless of target identity to catch injections even when Sysmon
+    fails to resolve the target process name (known environmental limitation).
+    Sourced from SigmaHQ sysmon_suspicious_remote_thread.yml (community-
+    validated process list) cross-referenced against DFIR Report incident data
+    and MITRE ATT&CK T1055 campaign documentation.
   mitre_technique: T1055
   mitre_tactic: Defense Evasion
   severity: Critical
@@ -22,16 +17,81 @@
   logic: AND
   conditions:
     - field: source_image
-      operator: regex
-      value: ".+"
-    - field: source_image
-      operator: not_same_basename
-      reference_field: target_image
-    - field: source_image
-      operator: not_contains_any
+      operator: ends_with_any
       values:
-        - "werfault.exe"   # Windows Error Reporting — injects diagnostic thread into crashing process
-        - "csrss.exe"      # Windows session management — creates threads for session lifecycle
+        - '\winword.exe'       # Office — documented Emotet/QakBot/TrickBot source
+        - '\excel.exe'         # Office
+        - '\powerpnt.exe'      # Office
+        - '\outlook.exe'       # Office
+        - '\lync.exe'          # Office/Lync
+        - '\mspaint.exe'       # Utility — no injection use case
+        - '\powershell.exe'    # Script engine — primary fileless threat vector
+        - '\wscript.exe'       # Script engine — documented QakBot/Emotet source
+        - '\mshta.exe'         # Script engine — documented Emotet LOLBin source
+        - '\msiexec.exe'       # LOLBin — T1218.007
+        - '\regsvr32.exe'      # LOLBin — T1218.010
+        - '\wmic.exe'          # LOLBin — T1047
+        - '\installutil.exe'   # LOLBin — T1218.004
+        - '\schtasks.exe'      # LOLBin — T1053.005
+        - '\iexplore.exe'      # Browser — documented injection source
+        - '\msbuild.exe'       # Build tool — documented LOLBin abuse
+        - '\cvtres.exe'        # Build tool — documented abuse
+        - '\vssadmin.exe'      # Utility — documented ransomware abuse
+        - '\find.exe'          # Utility — no injection use case
+        - '\findstr.exe'       # Utility — no injection use case
+        - '\forfiles.exe'      # Utility — T1059 abuse documented
+        - '\expand.exe'        # Utility — no injection use case
+        - '\defrag.exe'        # Utility — no injection use case
+        - '\ping.exe'          # Utility — no injection use case
+        - '\robocopy.exe'      # Utility — no injection use case
+        - '\makecab.exe'       # Utility — no injection use case
+        - '\gpupdate.exe'      # Utility — no injection use case
+        - '\hh.exe'            # LOLBin — T1218 documented
+        - '\explorer.exe'      # Shell — documented post-compromise pivot source
+        - '\monitoringhost.exe' # Documented .NET CLR injection target/source
+    - field: source_image
+      operator: not_contains
+      value: 'python_runtime\python.exe'  # Exclude ShadowSensor's own pipeline
+
+- id: API_CRT_SENSITIVE_TARGET_001
+  name: CreateRemoteThread Targeting Sensitive System Process
+  description: >
+    Detects CreateRemoteThread where the target is a known sensitive system
+    process (lsass.exe, winlogon.exe, csrss.exe) from any source not in the
+    known-benign system process exclusion list. Catches novel or unknown
+    injection sources targeting credential stores and authentication processes.
+    Severity is High rather than Critical because source is not a confirmed
+    suspicious process — this rule covers the unknown-source case.
+    Complements API_CRT_SUSPICIOUS_SOURCE_001 which fires on known-suspicious
+    sources regardless of target.
+  mitre_technique: T1055
+  mitre_tactic: Defense Evasion
+  severity: High
+  event_ids: [8]
+  logic: AND
+  conditions:
+    - field: target_image
+      operator: ends_with_any
+      values:
+        - '\lsass.exe'
+        - '\winlogon.exe'
+        - '\csrss.exe'
+    - field: source_image
+      operator: not_ends_with_any
+      values:
+        - '\csrss.exe'         # Windows session management
+        - '\werfault.exe'      # Windows Error Reporting
+        - '\svchost.exe'       # Windows service host
+        - '\wmiprvse.exe'      # WMI Provider Host — confirmed FP source
+        - '\vmtoolsd.exe'      # VMware Tools — confirmed FP source
+        - '\MsMpEng.exe'       # Windows Defender
+        - '\lsass.exe'         # LSASS self-reference
+        - '\winlogon.exe'      # Winlogon self-reference
+        - '\wininit.exe'       # Windows initialization
+        - '\services.exe'      # Windows Service Control Manager
+    - field: source_image
+      operator: not_contains
+      value: 'python_runtime\python.exe'  # Exclude ShadowSensor's own pipeline
 
 - id: API_OPEN_PROCESS_SUSPICIOUS_ACCESS_001
   name: Suspicious OpenProcess targeting security-sensitive process
@@ -49,11 +109,11 @@
   logic: AND
   conditions:
     - field: granted_access
-      operator: contains_any
+      operator: bits_any_set
       values:
-        - "0x1f0fff"  # PROCESS_ALL_ACCESS — unrestricted access, required for most injection
-        - "0x1410"    # PROCESS_CREATE_THREAD | PROCESS_DUP_HANDLE | PROCESS_VM_WRITE — classic injection combo
-        - "0x1fffff"  # PROCESS_ALL_ACCESS (alternate form seen in some tooling)
+        - "0x1f0fff"   # PROCESS_ALL_ACCESS — full access, classic Mimikatz pattern
+        - "0x1410"     # PROCESS_VM_READ | PROCESS_CREATE_THREAD | PROCESS_DUP_HANDLE
+        - "0x1fffff"   # PROCESS_ALL_ACCESS alternate form
     - field: target_image
       operator: ends_with_any
       values:
@@ -63,11 +123,17 @@
     - field: source_image
       operator: not_ends_with_any
       values:
-        - "MsMpEng.exe"   # Windows Defender memory scanner
-        - "csrss.exe"     # Windows session management
-        - "lsass.exe"     # LSASS self-reference
-        - "winlogon.exe"  # Windows logon process (opens lsass during authentication)
-        - "wininit.exe"   # Windows initialization process (opens lsass during boot)
+        - "MsMpEng.exe"                                       # Windows Defender memory scanner — bare basename; path includes a
+                                                                # version-numbered segment that changes on every Defender platform
+                                                                # update, so it cannot be safely path-anchored. Known accepted
+                                                                # residual masquerading gap — see research paper Section 2.
+        - "\\Windows\\System32\\csrss.exe"                     # Windows session management
+        - "\\Windows\\System32\\lsass.exe"                     # LSASS self-reference
+        - "\\Windows\\System32\\winlogon.exe"                  # Windows logon process (opens lsass during authentication)
+        - "\\Windows\\System32\\wininit.exe"                   # Windows initialization process (opens lsass during boot)
+        - "\\Windows\\System32\\svchost.exe"                   # CONFIRMED FP — 2026-07-12, svchost->winlogon/lsass, 0x1fffff
+        - "\\Windows\\System32\\wbem\\wmiprvse.exe"            # CONFIRMED FP — WMI Provider Host, 289 occurrences, 0x1410
+        - "\\Program Files\\VMware\\VMware Tools\\vmtoolsd.exe" # CONFIRMED FP — VMware Tools guest integration, 10 occurrences
 
 - id: API_DLL_LOAD_SUSPICIOUS_PATH_001
   name: Unsigned DLL Loaded from User-Writable Staging Path
@@ -148,13 +214,13 @@
   logic: AND
   conditions:
     - field: granted_access
-      operator: contains_any
+      operator: bits_any_set
       values:
-        - "0x0020"
-        - "0x0028"
-        - "0x0038"
-        - "0x001f0fff"
-        - "0x0021"
+        - "0x0020"     # PROCESS_VM_WRITE — memory write capability
+        - "0x0028"     # PROCESS_VM_WRITE | PROCESS_VM_OPERATION
+        - "0x0038"     # PROCESS_VM_WRITE | PROCESS_VM_OPERATION | PROCESS_VM_READ
+        - "0x001f0fff" # PROCESS_ALL_ACCESS
+        - "0x0021"     # PROCESS_VM_WRITE | PROCESS_CREATE_THREAD
     - field: source_image
       operator: not_ends_with_any
       values:
@@ -185,11 +251,11 @@
   logic: AND
   conditions:
     - field: granted_access
-      operator: contains_any
+      operator: bits_any_set
       values:
-        - "0x0040"
-        - "0x0440"
-        - "0x1440"
+        - "0x0040"   # PROCESS_DUP_HANDLE — token manipulation capability
+        - "0x0440"   # PROCESS_DUP_HANDLE | PROCESS_QUERY_INFORMATION
+        - "0x1440"   # PROCESS_DUP_HANDLE | PROCESS_QUERY_INFORMATION | extra
     - field: target_image
       operator: ends_with_any
       values:
@@ -236,12 +302,9 @@
         - "cylancesvc.exe"
         - "cb.exe"
     - field: granted_access
-      operator: contains_any
+      operator: bits_any_set
       values:
         - "0x0001"
-        - "0x0021"
-        - "0x1f0fff"
-        - "0x1fffff"
         - "0x0020"
     - field: source_image
       operator: not_ends_with_any
@@ -253,12 +316,8 @@
         - "tiworker.exe"
         - "sgrmbroker.exe"
         - "wuauclt.exe"
-    - field: source_image
-      operator: not_ends_with_any
-      values:
         - "csrss.exe"
         - "conhost.exe"
-        - "svchost.exe"
         - "lsass.exe"
         - "winlogon.exe"
         - "wininit.exe"

@@ -109,11 +109,11 @@ def test_validate_rule_event_ids_stored_as_tuple():
     assert rule.event_ids == (1, 3)
 
 
-def test_load_rules_from_directory_returns_49_rules():
-    """Loading the definitions directory returns exactly 49 rules after rule split correction."""
+def test_load_rules_from_directory_returns_51_rules():
+    """Loading the definitions directory returns exactly 51 rules after Category A fixes."""
     rules_dir = Path("rules")
     rules = load_rules_from_directory(rules_dir)
-    assert len(rules) == 49
+    assert len(rules) == 51
 
 
 def test_loaded_rules_have_unique_ids():
@@ -146,15 +146,15 @@ def test_load_rule_file_powershell_returns_11_rules():
     assert len(rules) == 11
 
 
-def test_load_rule_file_api_memory_returns_2_rules():
-    """The api_memory.yaml file contains exactly 7 rules."""
+def test_load_rule_file_api_memory_returns_8_rules():
+    """The api_memory.yaml file contains exactly 8 rules."""
     path = Path("rules") / "definitions" / "api_memory.yaml"
     rules = load_rule_file(path)
-    assert len(rules) == 7
+    assert len(rules) == 8
 
 
-def test_load_rule_file_network_returns_1_rule():
-    """The network.yaml file contains exactly 8 rules."""
+def test_load_rule_file_network_returns_9_rules():
+    """The network.yaml file contains exactly 9 rules."""
     path = Path("rules") / "definitions" / "network.yaml"
     rules = load_rule_file(path)
-    assert len(rules) == 8
+    assert len(rules) == 9

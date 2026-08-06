@@ -51,6 +51,30 @@ def _op_not_contains_any(field_val: str, values: tuple[str, ...]) -> bool:
     return not any(v.lower() in field_val for v in values)
 
 
+def _op_bits_any_set(field_val: str, values: tuple[str, ...]) -> bool:
+    """
+    Bitwise match for hex-string access mask fields (e.g. granted_access).
+    Parses field_val and each entry in values as hex integers.
+    Returns True if (field_val_int & entry_int) == entry_int for ANY entry in values.
+    Returns False if field_val is None, empty, or not a valid hex string.
+    Returns False if any entry in values is not a valid hex string (skips it).
+    """
+    if not field_val:
+        return False
+    try:
+        field_int = int(field_val.strip(), 16)
+    except ValueError:
+        return False
+    for v in values:
+        try:
+            mask_int = int(v.strip(), 16)
+        except ValueError:
+            continue
+        if (field_int & mask_int) == mask_int:
+            return True
+    return False
+
+
 def _op_ends_with_any(field_val: str, values: tuple[str, ...]) -> bool:
     """Return True if field_val ends with any of the provided suffixes."""
     return any(field_val.endswith(v.lower()) for v in values)
@@ -115,6 +139,7 @@ _OPERATOR_MAP: dict[str, Callable] = {
     "not_contains": _op_not_contains,
     "contains_any": _op_contains_any,
     "not_contains_any": _op_not_contains_any,
+    "bits_any_set": _op_bits_any_set,
     "ends_with_any": _op_ends_with_any,
     "not_ends_with_any": _op_not_ends_with_any,
     "starts_with": _op_starts_with,
