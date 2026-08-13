@@ -684,3 +684,15 @@ Subphase 6 (CreateRemoteThread/Injection, originally planned separately) is **su
 **Next: Subphase 7 — Consolidation & Handoff.**
 
 ---
+
+## Subphase 7 — Consolidation & Handoff — COMPLETE
+
+**Date:** 2026-08-13
+
+All 5 subphase CSVs combined into `data/features/suspicious.csv` (1,105 rows, 31 cols, all label=1). Contamination check PASSED. IF score comparison: suspicious mean=0.2152 (14.7% anomalous) vs benign mean=0.1394 (5.0% anomalous) — consistent positive separation, RF needed for full classification. `docs/phase7a_final_report.md` written (family enrichment log, rule confirmation table, coverage gaps, Phase 7B readiness statement). `docs/decisions_log.md` Entry 016 added (D52–D55, SP6 supersession). `committee.md` and `VM_RUN_GUIDE.md` updated and corrected.
+
+**Phase 7A final commit:** `fda482d` — `feat(phase7a): complete Phase 7A — rule fixes E1/E2/C4, simulation scripts SP1-5, labeled telemetry` — 37 files changed, 13,946 insertions, 236 deletions.
+
+**Phase 7A is CLOSED. Phase 7B (Random Forest training) is next.**
+
+---
