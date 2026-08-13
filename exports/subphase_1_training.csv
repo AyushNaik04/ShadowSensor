@@ -1,0 +1,36 @@
+rule_id,attack_path,field_values_used,result,reason,timestamp_utc
+PS_ENCODED_CMD_001,Path A,-EncodedCommand (2 base64 payloads),PASS,2 hits,2026-08-12T08:57:30.155416
+PS_ENCODED_CMD_001,Path B,-enc  (2 base64 payloads),PASS,2 hits,2026-08-12T08:58:13.559976
+PS_ENCODED_CMD_001,Path C,-ec  (2 base64 payloads),PASS,2 hits,2026-08-12T08:59:06.870489
+PS_DOWNLOAD_CRADLE_001,FP_SUPPRESSION,schtasks → powershell New-Object Net.WebClient (svchost parent),PASS,0 hits,2026-08-12T08:59:50.164749
+PS_DOWNLOAD_CRADLE_001,Path A,DownloadString + WebClient (2 launches),PASS,2 hits,2026-08-12T09:00:06.633688
+PS_DOWNLOAD_CRADLE_001,Path B,iwr  + Invoke-WebRequest,PASS,2 hits,2026-08-12T09:00:56.082539
+PS_DOWNLOAD_CRADLE_001,Path C,curl  + wget ,PASS,2 hits,2026-08-12T09:01:35.928379
+PS_AMSI_BYPASS_001,Path A,amsiInitFailed,PARTIAL,DEFENDER_BLOCKED,2026-08-12T09:02:15.642019
+PS_AMSI_BYPASS_001,Path B,AmsiScanBuffer path (AmsiUtils present),PARTIAL,DEFENDER_BLOCKED,2026-08-12T09:02:17.768954
+PS_AMSI_BYPASS_001,Path C,AmsiUtils,PARTIAL,DEFENDER_BLOCKED,2026-08-12T09:02:19.876658
+PS_HIDDEN_WINDOW_001,FP_SUPPRESSION,schtasks → powershell -WindowStyle Hidden (svchost parent),PASS,0 hits,2026-08-12T09:02:21.946022
+PS_HIDDEN_WINDOW_001,Path A,-WindowStyle Hidden (2 launches),PASS,2 hits,2026-08-12T09:02:38.210706
+PS_HIDDEN_WINDOW_001,Path B,-W Hidden (2 launches),PASS,2 hits,2026-08-12T09:03:23.974553
+PS_HIDDEN_WINDOW_001,Path C,-WindowStyle H (2 launches),PASS,2 hits,2026-08-12T09:03:59.244353
+PS_EXECUTION_POLICY_BYPASS_001,Path A,-executionpolicy bypass (2 launches),PASS,2 hits,2026-08-12T09:06:36.212936
+PS_EXECUTION_POLICY_BYPASS_001,Path B,-ep bypass (2 launches),PASS,2 hits,2026-08-12T09:08:33.962182
+PS_EXECUTION_POLICY_BYPASS_001,Path C,-executionpolicy unrestricted (2 launches),PASS,2 hits,2026-08-12T09:09:10.402030
+PS_INVOKE_EXPRESSION_001,Path A,iex ( + downloadstring,PASS,2 hits,2026-08-12T09:09:59.423647
+PS_INVOKE_EXPRESSION_001,Path B,|iex + frombase64string,FAIL,0 hits,2026-08-12T09:10:43.743670
+PS_INVOKE_EXPRESSION_001,Path C,invoke-expression + webclient/downloadstring/downloadfile,PASS,2 hits,2026-08-12T09:13:51.164972
+PS_VERSION_DOWNGRADE_001,Path A,-version 2 (2 launches),PASS,2 hits,2026-08-12T09:14:43.350318
+PS_VERSION_DOWNGRADE_001,Path B,-version 2.0 (2 launches),PASS,2 hits,2026-08-12T09:15:17.791246
+PS_VERSION_DOWNGRADE_001,Path C,-v 2 and -ve 2,PASS,2 hits,2026-08-12T09:15:52.151748
+PS_REFLECTIVE_ASSEMBLY_001,Path A,[system.reflection.assembly]::load + [reflection.assembly]::load,PASS,2 hits,2026-08-12T09:16:26.469296
+PS_REFLECTIVE_ASSEMBLY_001,Path B,[reflection.assembly]::loadfile + [system.reflection.assembly]::loadfile,PASS,2 hits,2026-08-12T09:17:02.655293
+PS_REFLECTIVE_ASSEMBLY_001,Path C,loadwithpartialname + assembly]::loadfrom,PASS,2 hits,2026-08-12T09:17:38.463782
+PS_CREDENTIAL_ACCESS_001,Path A,invoke-mimikatz,PARTIAL,DEFENDER_BLOCKED,2026-08-12T09:18:15.631348
+PS_CREDENTIAL_ACCESS_001,Path B,sekurlsa,PARTIAL,DEFENDER_BLOCKED,2026-08-12T09:18:17.709630
+PS_CREDENTIAL_ACCESS_001,Path C,invoke-dcsync,PARTIAL,DEFENDER_BLOCKED,2026-08-12T09:18:19.799516
+PS_CONSTRAINED_LANG_BYPASS_001,Path A,__pslockdownpolicy (2 launches),PASS,2 hits,2026-08-12T09:18:23.254886
+PS_CONSTRAINED_LANG_BYPASS_001,Path B,pslockdownpolicy (2 launches),PASS,2 hits,2026-08-12T09:19:10.053352
+PS_CONSTRAINED_LANG_BYPASS_001,Path C,__pslockdownpolicy variants (2 launches),PASS,2 hits,2026-08-12T09:19:50.725809
+PS_WMI_EXEC_001,Path A,invoke-wmimethod + win32_process / get-wmiobject,PASS,2 hits,2026-08-12T09:20:26.699025
+PS_WMI_EXEC_001,Path B,get-wmiobject + gwmi,PASS,2 hits,2026-08-12T09:21:04.350651
+PS_WMI_EXEC_001,Path C,[wmiclass] + new-object system.management,PASS,2 hits,2026-08-12T09:21:40.482137

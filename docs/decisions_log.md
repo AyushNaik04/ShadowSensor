@@ -7,245 +7,401 @@ Do not delete or rewrite past entries; corrections go in a new entry referencing
 
 ---
 
-## Entry 011 — 2026-08-07 | Issue Catalog Category C — Confirmed False Positives
+## Entry 016 — Phase 7A Subphase 5: SP6 Supersession and EID-7/EID-10 Sysmon Visibility Limits (D52–D55)
 
-**Decision:** Fix all three confirmed false positive issues (C1, C2,
-C3) in a single combined task executed across three subphases, each
-in its own fresh Cursor chat session. All three issues confirmed
-closed. 21 new tests added. Test suite: 634 → 655 passing, 0 failed.
-Rule count unchanged at 51 (conditions-only category).
+**Date:** 2026-08-13
+**Phase:** 7A Subphase 5 (API/Memory, 8 rules) + SP7 Consolidation
+**Category:** Simulation methodology — rule visibility, environmental constraints, subphase scope
+**Status:** CLOSED — findings documented, simulation complete, suspicious.csv generated
 
----
+### SP6 Supersession Decision
 
-### C1 — `API_AV_PROCESS_ACCESS_001`
+**Decision:** Subphase 6 (originally scoped as a separate simulation of EID-8 CRT rules) was superseded by SP5. All 8 `api_memory.yaml` rules — including `API_CRT_SUSPICIOUS_SOURCE_001` and `API_CRT_SENSITIVE_TARGET_001` (EID-8) — were integrated into `simulate_subphase_5.py`.
 
-**Issue:** Two classes of false positive confirmed across Phase 4B
-and the Phase 7A fix session:
-1. `granted_access` used `contains_any` with 5 literal hex strings
-   (`0x0001`, `0x0021`, `0x1f0fff`, `0x1fffff`, `0x0020`) — same
-   class of bug as Category A's D47/D49: Windows can over-grant
-   access bits, producing a value not in the enumerated list, causing
-   a miss. Same root cause, same fix class.
-2. Two separate `source_image not_ends_with_any` blocks existed in
-   the YAML with a duplicate `svchost.exe` entry — fragile and
-   redundant structure, error-prone to maintain.
+**Rationale:** During SP5 script design, the committee determined that EID-10 (OpenProcess), EID-7 (ImageLoad), and EID-8 (CreateRemoteThread) rules are tightly coupled in their simulation infrastructure (same DLL compilation step, same pre-flight process setup, same DB polling pattern). Running them as a single integrated script is cleaner and avoids stale-hit bleed between two separate sessions.
 
-**Fix:**
-- `granted_access` operator migrated from `contains_any` to
-  `bits_any_set`. Values reduced to `["0x0001", "0x0020"]` — the
-  two minimal capability bits. The three removed values (`0x0021`,
-  `0x1f0fff`, `0x1fffff`) are redundant supersets under bit-set
-  semantics: any value containing those bits necessarily contains
-  `0x0001` and/or `0x0020`, so they add no detection coverage while
-  narrowing match surface unnecessarily.
-- Two `source_image not_ends_with_any` blocks consolidated into one
-  block with 12 unique values. Duplicate `svchost.exe` entry removed.
+**EID-8 result:** Both CRT rules PASS — `API_CRT_SUSPICIOUS_SOURCE_001` and `API_CRT_SENSITIVE_TARGET_001` confirmed with 3 paths / 2 launches each, using the E5 workaround (ntdll.RtlExitUserThread instead of kernel32.LoadLibrary — avoids the Sysmon `StartModule=kernel32.dll` exclusion documented in `phase7a_subphase5-7_issues_log.md` Entry E5).
 
-**Verified correct:** The pre-existing `test_api_av_process_access_fires`
-test uses `granted_access=0x1fffff`. Under `bits_any_set` with mask
-`0x0001`: `0x1fffff & 0x0001 == 0x0001` ✓. With mask `0x0020`:
-`0x1fffff & 0x0020 == 0x0020` ✓. Test continues to pass unmodified —
-confirmed by independent bitwise verification before any edit was made.
+**Note:** `injection.yaml` was listed in early documentation as the source file for SP6. This file does not exist in `rules/definitions/`. No SP6 simulation was needed.
 
-**Test-value authoring error caught mid-implementation:** The
-task.md originally specified `0x1010` as a test mask for the
-over-grant scenario. Independent bitwise check by Cursor revealed
-`0x1010 & 0x0020 == 0` — the mask does not contain the required bit,
-so the test would have been testing the wrong thing. Corrected to
-`0x1020` (`0x1020 & 0x0020 == 0x0020` ✓) before any edit was made.
-Process note: when specifying literal hex/numeric test values in a
-task.md, perform independent bitwise verification before finalizing
-the document rather than relying on Cursor to catch it post-hoc.
+### D52 — EID-10 Not Logged for Denied OpenProcess (PPL-Protected Processes)
 
-**Residual gap — documented, not fixed:** Modern T1562.001 bypass
-techniques (BYOVD kernel-driver kills, direct/indirect syscalls
-bypassing user-mode ETW hooks, DLL hijacking inside the AV process
-itself) operate below the user-mode `OpenProcess` hook that this rule
-observes. These bypass paths are confirmed via threat intelligence:
-Reynolds ransomware (2026), Kasseika (2024), RansomHub
-EDRKillShifter, HookChain/DEF CON 32 (88% bypass rate across 26 EDR
-solutions), ToddyCat vs ESET (2024), LockBit vs MpCmdRun.exe. This
-rule's honest scope is commodity/unsophisticated T1562.001 (Ryuk,
-RunningRAT, Netwalker, Medusa Group-class) — a defensible and
-documented scope, not a weakness. Unfixable at rule-engine level.
-Flagged for research paper Section 2.
+**Finding:** Sysmon EID-10 (ProcessAccess) fires via ObRegisterCallbacks and only logs events when the OS grants the requested handle. If `OpenProcess` returns `WinError 5` (ACCESS_DENIED) — as occurs when targeting PPL-protected processes — Sysmon receives no kernel notification and logs nothing.
 
-**Additional confirmed gap (D45, environmental):** PPL (Protected
-Process Light) prevents `OpenProcess` against `MsMpEng.exe` even
-from a fully elevated Administrator session — confirmed via explicit
-control test in Phase 7A Subphase 5 (`Elevated handle obtained:
-False`). Genuine-detection capability for this rule cannot be
-empirically validated on this VM via the P/Invoke simulation
-technique. The same attacker technique class that bypasses the rule
-(BYOVD) also bypasses the simulation constraint — coherent, not
-contradictory. Flagged for research paper Section 2. Cross-reference
-Category D Entry 012, D-e.
+**Confirmed targets:** `csrss.exe` (Protected Process Light), `services.exe` (restrictive DACL). Any `OpenProcess` call targeting these processes with any non-trivial access mask fails silently from Sysmon's perspective.
 
-**Tests added:** 6, in new file
-`tests/test_category_c_fixes/test_c1_av_process_access.py`.
-Pre-existing tests in `tests/test_phase4a/test_api_memory_rules.py`
-(`test_api_av_process_access_fires` and the 6-way parametrized
-`test_api_av_process_access_does_not_fire_for_issue1_excluded_sources`)
-confirmed compatible with new `bits_any_set` structure via independent
-bitwise verification and left unmodified.
+**Impact:** `API_OPEN_PROCESS_SUSPICIOUS_ACCESS_001` Path C, `API_TOKEN_MANIPULATION_001` Path C, and `API_OPEN_PROCESS_VM_WRITE_001` Path C all FAIL. Rules reclassified as PARTIAL (2/3 paths PASS each). Not a rule defect — the detection logic is correct for the cases where access is granted.
+
+**Standing rule:** When designing EID-10 simulation paths, always target processes that will grant the requested handle (notepad, winlogon, lsass with non-PPL tokens). Do not target csrss.exe or services.exe for EID-10 simulation on this VM.
+
+### D53 — API_AV_PROCESS_ACCESS_001 Structurally Unfireable on This VM
+
+**Finding:** `OpenProcess` on fake msmpeng.exe/mpcmdrun.exe processes (copies of notepad.exe renamed and placed in `C:\Windows\Temp`) succeeds (handle acquired and released) but generates zero EID-10 events. Sysmon's `ProcessAccess` filter only generates events for processes on its configured target list (lsass, winlogon, csrss, etc.) — it does not monitor arbitrary processes by image name.
+
+**Real MsMpEng.exe** is PPL — all access denied per D52.
+
+**Decision:** Rule classified as unfireable on this VM without Sysmon config expansion. Documented for paper §2 as a telemetry visibility gap. No label=1 data for `API_AV_PROCESS_ACCESS_001` in the training set.
+
+### D54 — Sysmon ImageLoad Filter Excludes python.exe (API_DLL_LOAD_SUSPICIOUS_PATH_001)
+
+**Finding:** Loading DLLs via `python.exe -c "import ctypes; ctypes.WinDLL(r'path')"` produces zero Sysmon EID-7 events. The VM's Sysmon configuration ImageLoad filter does not include python.exe as a monitored process. Additionally, Defender quarantined `C:\Users\Public\ss_api.dll` during simulation (cleanup showed WinError 2 — file already gone).
+
+**Decision:** Rule unfireable via python subprocess approach. Fix requires Sysmon config change to add python.exe to the ImageLoad process list, or a different loader that IS on the monitored list. Deferred — not blocking Phase 7B. No label=1 data for this rule in the training set.
+
+### D55 — Sysmon ImageLoad Filter Excludes rundll32/regsvr32 DLL Loads (API_LOLBIN_DLL_UNSIGNED_001)
+
+**Finding:** `rundll32.exe` loading an unsigned .NET DLL from Temp (process hung 20s before timeout — DLL WAS loaded per the hang) and `regsvr32.exe /s` loading the same DLL both produce zero Sysmon EID-7 events. The Sysmon ImageLoad filter on this VM does not capture these LOLBin DLL loads. This is consistent with many enterprise Sysmon deployments that exclude high-frequency DLL loaders from ImageLoad monitoring to reduce noise.
+
+**Decision:** Rule unfireable without Sysmon config change. Fix path: add rundll32.exe and regsvr32.exe to the Sysmon ImageLoad process include list. Deferred, bundled with D28/E5 as a future Sysmon config session. No label=1 data for this rule in the training set.
+
+### SP7 Consolidation Results
+
+- Combined `data/features/suspicious.csv`: **1,105 rows**, 31 columns (30 features + label), all label=1
+- Contamination check: PASSED
+- IF score comparison: suspicious mean=0.2152 vs benign mean=0.1394 (14.7% vs 5.0% anomalous rate)
+- `docs/phase7a_final_report.md` written — includes full family enrichment log, rule confirmation table, coverage gaps, and Phase 7B readiness statement
+- Phase 7A **COMPLETE** — Phase 7B (Random Forest training) is next
 
 ---
 
-### C2 — `NET_DNS_LONG_QUERY_001`
+## Entry 015 — Phase 7A Subphase 1 Re-simulation: Pipeline-Lag FP Finding (D44) and §21.5 CSV Reversal
 
-**Issue:** `SearchApp.exe` (Windows taskbar search process) confirmed
-generating false positives on 3 independent occurrences across Phase
-4B (Subphase 2, Subphase 3, and Subphase 7 formal benign baseline).
-Final Subphase 7 occurrence most precisely documented: timestamp
-`2026-07-12 23:00:19`, query `b59dd060c31a5268a4dd55e6dc581400.azr
-.footprintdns.com` (53 chars, over the 50-char threshold), a
-legitimate Microsoft Azure telemetry domain.
+**Date:** 2026-08-12
+**Phase:** 7A Subphase 1 (PowerShell, 11 rules)
+**Category:** Simulation methodology — pipeline lag behavior, FP suppression test design
+**Status:** CLOSED — finding documented, fix applied, simulation complete
 
-**Fix:** No condition, value, operator, or regex change. The live
-exclusion list already contained `SearchApp.exe` (applied in the
-Phase 4B fix pass). Fix in this session is:
-- Comment-only YAML edit annotating each exclusion's evidence basis:
-  confirmed-incident (SearchApp.exe, svchost.exe) vs.
-  precedent-based (browser processes, msmpeng.exe).
-- One new regression-lock test pinning the confirmed 70-char
-  `svchost.exe` benign sample (`netseer-ipaddr-assoc...fbcdn.net`,
-  Facebook CDN/anti-fraud) as non-firing, to prevent any future
-  session from accidentally narrowing this exclusion and
-  reintroducing the false positive.
+### Context
 
-**Why content/entropy tightening was rejected:** The confirmed benign
-`SearchApp.exe` sample is a 32-char hex-hash subdomain —
-structurally identical to what real DNS-tunneling payloads produce.
-Entropy heuristics would still false-positive on it. Frequency/
-beaconing detection requires stateful matching the engine does not
-have (same architectural limitation as D18, which eliminated
-`NET_BEACON_INTERVAL_001`). Correctly deferred to a post-Phase-10
-engine revamp if ever warranted.
+Subphase 1 was originally completed on 2026-07-29 producing 152 rows across two partial CSVs.
+Per §21.5 reversal (confirmed by Ayush — multi-path simulation for stronger training data),
+Subphases 1–4 CSVs were deleted and fresh simulation scripts drafted. This entry documents
+findings from the Subphase 1 re-simulation on 2026-08-12.
 
-**Residual gap — documented:** The `svchost.exe` exclusion is
-blanket. A genuinely compromised or injected `svchost.exe` issuing
-real DNS-tunneling queries would also be excluded. Accepted
-tradeoff — compensating coverage exists via
-`CHAIN_SCHEDULED_TASK_SVCHOST_001` and the `API_CRT_*` injection
-rules. Flagged for research paper Section 2.
+### D44 — Extreme Pipeline Lag Causes FP Suppression Test False Alarms
 
-**Tests added:** 1, in existing file
-`tests/test_phase4a/test_network_rules.py`.
+**Finding:** The VM's pipeline lag reaches 10–15 minutes for some Sysmon events. When the
+simulation script runs, events from prior runs (or from the same run's earlier rule blocks)
+arrive in the DB well after the section that generated them. This caused the FP suppression
+tests for PS_DOWNLOAD_CRADLE_001 and PS_HIDDEN_WINDOW_001 to trip their `sys.exit(1)` hard
+stops despite the rules working correctly.
 
----
+**Mechanism diagnosed by DB query:**
+- `fp_start` was set at ~08:13:09 UTC for the PS_DOWNLOAD_CRADLE_001 FP test.
+- The schtasks-launched `powershell.exe -Command "New-Object Net.WebClient"` appeared at
+  08:13:10 UTC with `parent_image = C:\Windows\System32\svchost.exe`.
+- The rule correctly produced **zero hits** for this svchost-parented process (exclusion
+  condition working as designed).
+- However, stale IEX DownloadString events from a prior script run (launched ~08:01 UTC)
+  were processed by the pipeline at 08:13:11 and 08:13:16 UTC — after `fp_start` — with
+  `parent_image = python_runtime\python.exe` (not excluded). The rule correctly fired on
+  these (python.exe is not in the exclusion list). The `quick=True` query at 08:13:24
+  returned `n=2`, triggering the false alarm.
 
-### C3 — `API_OPEN_PROCESS_SUSPICIOUS_ACCESS_001`
+**Rule correctness confirmed:** The exclusion logic for svchost.exe-parented scheduled task
+launches is working correctly. The FP test design cannot distinguish stale hits from genuine
+FP failures in a high-lag pipeline environment.
 
-**Issue:** `wmiprvse.exe`, `vmtoolsd.exe`, and `svchost.exe`
-confirmed generating false positives by opening handles to
-`winlogon.exe`/`lsass.exe` as part of normal OS/VM-integration/WMI
-operation. 9 total occurrences across Phase 4B and Phase 7A
-Subphases 3, 4, and 5. Resolution threshold (4th occurrence during
-deliberate simulation, per decisions_log.md Entry 010) met in Phase
-7A Subphase 5.
+**Fix applied:** Both FP hard stops (`PS_DOWNLOAD_CRADLE_001` and `PS_HIDDEN_WINDOW_001`)
+converted from `sys.exit(1)` to `[WARN]` log + `fp_result = "WARN"`. Simulation continues.
+No changes to rule YAML or engine. This is a test methodology limitation, not a rule defect.
 
-**Important distinction from D49/Category A:** D49's affected
-simulations used access masks that Windows over-granted beyond the
-rule's allow-list — a matching-logic bug. C3's false positive
-occurrences use `granted_access=0x1410`, which is already inside
-the allow-list and matches as designed. C3 is a source-exclusion
-scope gap; D49 was a matching-logic bug. Both apply to this same
-rule; both are now fixed independently.
+**Standing rule added:** In any script that checks FP suppression with `quick=True` in a
+high-lag pipeline environment, treat the result as informational only. Hard stops on FP
+tests are inappropriate when stale hits from prior runs can bleed into the test window.
 
-**Masquerading risk identified and addressed:** A bare-basename
-exclusion (e.g. `svchost.exe` only) would be exploitable via
-T1036.005 (Masquerading) — `not_ends_with_any` is a suffix match,
-so `C:\Users\Public\svchost.exe` would also match and be silently
-excluded. Fix uses full path suffixes instead of bare basenames,
-anchoring exclusions to their known system locations. This blocks
-masquerading without requiring any engine changes.
+### Subphase 1 Re-simulation Results
 
-**Path investigation performed (two rounds):**
-- Round 1: `wmiprvse.exe` → `C:\Windows\system32\wbem\wmiprvse.exe`
-  (289 occurrences in logs, both casings). `vmtoolsd.exe` →
-  `C:\Program Files\VMware\VMware Tools\vmtoolsd.exe` (10
-  occurrences, single consistent path). `svchost.exe` →
-  `C:\Windows\system32\svchost.exe` (75 occurrences as source for
-  this rule).
-- Round 2: Confirmed rule engine lowercases both field values and
-  YAML condition values before every `ends_with_any`/
-  `not_ends_with_any` comparison — centrally, in `rules/engine.py`,
-  before any operator runs. Mixed casing in data (`C:\WINDOWS\...`
-  vs `C:\Windows\...`) is handled by this normalization. Confirmed
-  via code read, not assumed.
+- **Script:** `scripts/simulate_subphase_1.py` (committee-authored, multi-path, 2 launches/path)
+- **Rules covered:** 11/11 `powershell.yaml` rules
+- **Results:** 6 PASS, 2 PARTIAL (D-f: Defender blocks PS_AMSI_BYPASS_001 and
+  PS_CREDENTIAL_ACCESS_001 pre-execution), 3 PARTIAL-pipeline-lag (PS_HIDDEN_WINDOW_001
+  Paths B/C, PS_EXECUTION_POLICY_BYPASS_001 Paths A/B, PS_INVOKE_EXPRESSION_001 Path B —
+  commands ran correctly, events in Sysmon, pipeline delivered hits after 180s polling
+  window closed; all confirmed in DB via diagnostic query)
+- **Staging CSV:** `exports/subphase_1_training.csv` (36 data rows, one per rule-path)
+- **Feature CSV:** `data/features/suspicious_ps.csv` — 312 process windows, 31 features,
+  label=1, UTC extraction window 2026-08-12 07:57:00 – 09:00:00
+- **Replaces:** `suspicious_ps_partial1.csv`, `suspicious_ps_partial2.csv` (152 rows, 2026-07-29)
+- **Training data assessment:** All 11 rules contributed genuine labeled hits. 312 rows vs
+  prior 152 — doubled labeled data volume. Multi-path simulation confirmed working.
 
-**Fix — `source_image not_ends_with_any` condition:**
-```yaml
-    - field: source_image
-      operator: not_ends_with_any
-      values:
-        - "MsMpEng.exe"
-        - "\\Windows\\System32\\csrss.exe"
-        - "\\Windows\\System32\\lsass.exe"
-        - "\\Windows\\System32\\winlogon.exe"
-        - "\\Windows\\System32\\wininit.exe"
-        - "\\Windows\\System32\\svchost.exe"
-        - "\\Windows\\System32\\wbem\\wmiprvse.exe"
-        - "\\Program Files\\VMware\\VMware Tools\\vmtoolsd.exe"
-```
-`MsMpEng.exe` deliberately left bare-basename: its real install path
-contains a Defender-platform-version segment
-(`C:\ProgramData\Microsoft\Windows Defender\Platform\<version>\
-MsMpEng.exe`) that changes on every Defender update. Anchoring it
-would silently break the exclusion after the next update.
-`granted_access` (already `bits_any_set` from Category A/D49) and
-`target_image` left completely untouched.
+### §21.5 Reversal — CSV Deletion Confirmed
 
-**Residual gap — documented:** Path-anchoring blocks masquerading
-but does nothing against a genuine, correctly-pathed `svchost.exe`
-that has been process-hollowed or injected. Detection of that
-scenario is the province of the `API_CRT_*` injection rules, not
-this one. Defense-in-depth framing — same as C2. Flagged for
-research paper Section 2.
-
-**Tests added:** 14, in existing file
-`tests/unit/test_phase_2b_false_positives.py`, class
-`TestOpenProcessRule`. Includes: 1 masquerade true-positive (new
-capability unlocked by path-anchoring), 9 genuine-path FP
-regression tests (including 2 explicit mixed-casing variants to
-lock in the case-normalization behavior), 4 confirmed-FP exclusion
-tests for the 3 newly authorized source processes. All 9
-pre-existing genuine-detection TP tests confirmed passing
-unregressed.
+Per Ayush's explicit confirmation: Subphases 1–4 CSVs deleted and regenerated fresh.
+Rationale: multi-path simulation produces stronger training data (multiple genuine DB hits
+per rule per path, varied field value combinations) compared to single-path prior approach.
+Decision supersedes §21.5 (CSV retention). Documented here as permanent record.
 
 ---
 
-### Cross-Cutting Process Decisions
+## Entry 014 — Issue Catalog E1: API_OPEN_PROCESS_VM_WRITE_001 
+## Compiler-Toolchain and Console-Host False Positives
 
-**Discovery-step safeguard confirmed working (twice in Category C):**
-The mandatory pre-edit discovery step in task.md caught real gaps on
-two separate occasions: (1) in C1, found two pre-existing tests the
-task.md's discovery step predicted wouldn't exist — both confirmed
-compatible after independent bitwise verification, no edit needed;
-(2) in the Closing Verification, `git status` showed pre-existing
-Category A/B working-tree content that the task.md's clean-repo
-assumption didn't account for — Cursor correctly stopped rather than
-assuming it was fine. Both instances resolved cleanly. The
-"stop and report rather than assume" discipline embedded throughout
-task.md is confirmed pulling its weight. Standing rule: preserve
-this discipline verbatim in every future task.md, do not relax it.
+**Date:** 2026-08-11
+**Rule affected:** API_OPEN_PROCESS_VM_WRITE_001
+**Category:** C-class false positive (post-C4 discovery), Issue Catalog identifier E1
+**Status:** CLOSED
 
-**Context-management pattern — confirmed standing project convention:**
-Each multi-subphase task.md must be executed in a separate fresh
-Cursor chat per subphase. Each subphase's starter prompt must
-explicitly restate the prior subphase's closing test count and point
-to task.md as the ground truth. This pattern was applied across all
-three C subphases with zero continuity errors — each subphase's
-baseline regression number exactly matched the prior subphase's
-after-number, confirming no drift between chat sessions. This is now
-a standing project convention, not a one-time recommendation.
+### Issue
 
-**Git state note (carried forward):** As of Category C closure,
-nothing in the project had been git committed since the original
-initial commit. All of Phase 6A, 6B, Phase 7A Subphases 1–5, and
-the entire Category A/B/C fix session existed only in the
-uncommitted working tree. This was resolved in the subsequent commit
-session (commit 89cf182, 2026-08-06) — see git log for full detail.
+Two false-positive sub-patterns discovered during Phase 7A Subphase 5
+re-simulation, both producing spurious Critical-severity hits with
+zero deliberate injection technique running:
+
+- Sub-pattern A: conhost.exe/cmd.exe acquiring broad-access handles to
+  their own freshly-spawned children (console I/O plumbing, job-object
+  bookkeeping) — universal, unavoidable Windows console-subsystem
+  behavior.
+- Sub-pattern B: powershell.exe -> csc.exe -> cvtres.exe, the Add-Type
+  inline-C#-compilation chain this project's own P/Invoke simulation
+  templates rely on — PowerShell's Add-Type shells out to the real C#
+  compiler and native resource linker, and each parent opens a
+  broad-access handle to manage its child's lifecycle.
+
+Common mechanism: Windows' CreateProcess API returns a broad-rights
+handle (commonly 0x1fffff) to the creating process at the moment of
+child creation, so the parent can manage the child it just spawned.
+The rule had no signal distinguishing "handle to a process I just
+spawned" from "handle to an unrelated pre-existing process."
+
+### Investigation
+
+Read-only Cursor investigation confirmed rules/engine.py's
+EID-10 evaluation path has no access to parent-process-relationship
+data (no parent_process_id/parent_image lookup available at
+OpenProcess-evaluation time) — confirmed via exact citations in
+normalizer/models.py, normalizer/field_maps.py, normalizer/parser.py,
+storage/models.py, storage/storage_writer.py, scripts/run_pipeline.py.
+
+### Fix directions considered and rejected
+
+**Parent-child correlation suppression** (suppress if target was
+created by source within N seconds) — rejected on two independent
+grounds, both stated explicitly per this project's standing rule that
+feasibility and safety objections must both be recorded when both
+apply:
+1. Infeasible without new engine capability (confirmed by the
+   investigation above — no parent-child data reaches the rule engine
+   at EID-10 evaluation time).
+2. Unsafe even if built: a blanket "source created target -> suppress"
+   rule is structurally identical to the blind spot process hollowing
+   (T1055.012) exploits — a real attacker leveraging exactly this
+   pattern would evade detection by design.
+
+**"Surefire" single-event detection** — researched explicitly, not
+assumed. Confirmed as a documented, industry-wide limitation (MITRE
+ATT&CK T1055 detection guidance; SigmaHQ/Elastic Security pattern of
+multi-stage OpenProcess -> WriteProcessMemory -> CreateRemoteThread
+correlation), not a gap specific to this rule or this engine. The rule
+engine's lack of temporal/stateful matching (the same architectural
+wall documented at D18/NET_BEACON_INTERVAL_001) means this correlation
+is Phase 8A's job (alert correlation/severity engine), not any single
+rule's. Deferred there, documented honestly rather than iterated on
+indefinitely at the rule level.
+
+### Fix implemented
+
+- source_image not_ends_with_any: added conhost.exe, cmd.exe
+  (Sub-pattern A)
+- target_image: new exclusion block added (rule had none before),
+  csc.exe and cvtres.exe (Sub-pattern B)
+- powershell.exe deliberately left untouched on both source and
+  target side — explicit true-positive-preservation test confirms
+  genuine detection intact
+- csc.exe deliberately NOT added to source_image despite being
+  observed there — its only target (cvtres.exe) is already covered
+  target-side; adding it redundantly was explicitly prohibited in
+  task.md to prevent scope creep
+
+### Test suite delta
+
+Subphase 1 (source_image): 662 -> 665 (+3)
+Subphase 2 (target_image): 665 -> 669 (+4)
+Subphase 3 (closing verification, read-only): 669 confirmed
+Net: +7. Rule count unchanged at 51.
+
+### Process note
+
+The original version of this entry was self-authored by a Cursor
+executor session during Subphase 3, outside that subphase's
+permitted-files list (rules/definitions/api_memory.yaml and
+tests/test_phase4a/test_api_memory_rules.py only — docs/decisions_log.md
+was not listed). The content was factually accurate but the act of
+writing it was itself an out-of-scope action per this project's
+executor-implements-only discipline. This entry replaces that
+self-authored version. New standing rule adopted as a direct result:
+every task.md's permitted-files list must now explicitly state
+whether docs/decisions_log.md and status.md may be touched by the
+executor, and absent explicit permission, the executor must not write
+to either — even to accurately document its own completed work.
+
+## Entry 013 — 2026-08-07 | Issue Catalog C4 — API_OPEN_PROCESS_VM_WRITE_001
+False Positives (Standalone, Post-Category-C)
+
+**Decision:** Fix three confirmed false-positive gaps on
+`API_OPEN_PROCESS_VM_WRITE_001`, discovered on pipeline startup during
+Phase 7A Subphase 5 re-verification (zero simulation running — pure
+idle/self-update VM activity produced 5 Critical-severity hits in under
+a minute). Logged as a standalone issue, C4, separate from the closed
+Category C, since it surfaced after Category C's closure and was not
+part of the original Issue Catalog. Fixed across 3 subphases in a single
+combined `task.md`, each in its own fresh Cursor chat. Test suite:
+655 → 662 passing, 0 failed (+7 net: +2, +4, +1 per subphase; 1 existing
+test modified in place, 0 removed). Rule count unchanged at 51
+(conditions-only category, same as Category C).
+
+### Trigger — five simultaneous false positives, zero simulation
+
+Pipeline started for Subphase 5 re-verification; before any deliberate
+simulation, the rule fired 5 times in under a minute:
+- `MicrosoftEdgeUpdate.exe` (staged) → `MicrosoftEdgeUpdate.exe` (installed) — self-update
+- `msedgewebview2.exe` → itself — self-referential handle
+- `runonce.exe` → EdgeWebView `setup.exe` — routine post-boot install
+- `Sysmon64.exe` → `MicrosoftEdgeUpdate.exe` — Sysmon's own instrumentation
+- `services.exe` → `svchost.exe` — routine SCM service start
+
+All five used `granted_access=0x1fffff`. Investigation confirmed the
+`bits_any_set` operator (D49, Category A) was evaluating correctly —
+this was not an engine regression. Root cause was a pre-existing,
+never-addressed rule-design gap: no self-reference check, a stale
+unanchored source exclusion list, and a permission mask list whose
+loosest entry made the other four redundant.
+
+### Committee discussion — target-scoping considered and rejected
+
+Before drafting a fix, the committee discussed whether to add a
+`target_image` restriction (mirroring the sibling rule
+`API_OPEN_PROCESS_SUSPICIOUS_ACCESS_001`'s sensitive-target allowlist).
+**Rejected.** Real process-injection attackers deliberately choose
+ordinary, non-sensitive targets (explorer.exe, browser processes,
+long-running svchost instances) specifically to evade tools that only
+watch a short-list of sensitive targets. The sibling rule's
+target-restriction is appropriate there because that rule detects
+credential theft specifically (`lsass.exe` is the only target that
+matters for that attack); this rule detects generic code injection,
+which by design can target anything. Adding a target allowlist here
+would create a documented, exploitable blind spot. Decision: target
+side stays completely open; all three fixes are on the source/self-
+reference side instead.
+
+---
+
+### Subphase 1 — `not_same_basename` (source vs. target)
+
+**Fix:** Added `source_image not_same_basename reference_field:
+target_image` as a new condition. Uses the `same_basename`/
+`not_same_basename` field-reference operator pair, which already
+existed in `rules/engine.py`/`rules/schema.py` (built in an earlier
+phase, previously unused by any live rule) — **zero engine changes
+required**, pure YAML addition. Semantics: suppress the rule when
+source and target share the same filename (basename-only comparison,
+case-insensitive).
+
+**Residual gap — documented, not fixed:** basename-only, not
+path-anchored — a malicious process literally named e.g. `svchost.exe`
+opening the real `svchost.exe` would also be suppressed by this check.
+Not a new gap: this is the same accepted tradeoff already documented
+and in production use for Phase 5's `parent_is_same_image` feature
+("established heuristic: same binary name = benign multi-process
+architecture, not injection").
+
+**Tests added:** 2, in `tests/test_phase4a/test_api_memory_rules.py`
+(1 same-basename suppression, 1 different-basename true-positive
+confirming the check doesn't over-suppress).
+
+Full regression after this subphase: 657 passed, 0 failed.
+
+---
+
+### Subphase 2 — Path-anchored source exclusions
+
+**Fix:** `source_image not_ends_with_any` list migrated from 7 bare
+basenames to path-anchored suffixes (same pattern as the sibling
+rule's C3 fix), plus 3 new exclusions for the sources confirmed in
+today's false positives:
+- `\Windows\System32\services.exe` — SCM starting service hosts
+- `\Windows\Sysmon64.exe` — Sysmon's own instrumentation
+- `\Windows\System32\runonce.exe` — routine post-boot installer launches
+
+`MsMpEng.exe` deliberately left bare-basename, identical reasoning to
+the sibling rule's C1 fix: its real install path contains a
+Defender-platform-version segment that changes on every update;
+anchoring it would silently break the exclusion after the next
+Defender update.
+
+**Tests added:** 4 — 3 confirmed-FP exclusion tests (RunOnce, Sysmon64,
+services.exe) and 1 masquerade true-positive
+(`C:\Users\Public\svchost.exe`, confirming path-anchoring blocks
+T1036.005 masquerading, mirroring the equivalent C3 test on the sibling
+rule). The pre-existing `MsMpEng.exe` bare-basename exclusion test
+confirmed passing unmodified.
+
+Full regression after this subphase: 661 passed, 0 failed (+4).
+
+---
+
+### Subphase 3 — Permission floor raised
+
+**Fix:** `granted_access` `bits_any_set` mask list reduced from 5
+entries to 2: `0x0028` (`PROCESS_VM_WRITE | PROCESS_VM_OPERATION`) and
+`0x001f0fff` (`PROCESS_ALL_ACCESS`, retained explicitly for clarity/
+convention even though implied). Removed: `0x0020` (bare
+`PROCESS_VM_WRITE`), `0x0038` (redundant superset of `0x0028`), `0x0021`
+(`VM_WRITE | CREATE_THREAD`, still lacks `VM_OPERATION`).
+
+**Technical justification (not arbitrary tightening):** the actual
+Windows API used for memory-write injection, `WriteProcessMemory`,
+requires `PROCESS_VM_WRITE` and `PROCESS_VM_OPERATION` together — bare
+`PROCESS_VM_WRITE` alone cannot perform the write regardless of what
+(if anything) else it's paired with. Under `bits_any_set` OR semantics,
+`0x0020` alone had made the other four masks functionally redundant
+(anything satisfying the stricter masks already satisfies `0x0020`
+first), so the fix both removes a genuine false-positive source and
+eliminates dead-weight rule entries in the same move.
+
+**Deliberately updated existing test:** `test_api_open_process_vm_write_fires`
+— `granted_access` changed from `"0x0020"` to `"0x0028"` — documented
+in-line as an intentional floor change, not a silent break.
+
+**Tests added:** 1 new regression-lock
+(`test_api_open_process_vm_write_does_not_fire_for_bare_vm_write_alone`),
+pinning bare `0x0020` as non-firing going forward. Cross-file test
+`tests/test_category_a_fixes/test_bits_any_set.py::test_vm_write_fires_on_overgranted_0x1038`
+independently bitwise-verified compatible (`0x1038 & 0x0028 ==
+0x0028`) before running, confirmed passing, left unmodified.
+
+Full regression after this subphase: 662 passed, 0 failed (+1).
+
+---
+
+### Closing Verification
+
+Full regression: 662 passed, 0 failed — matches arithmetic
+(655 + 2 + 4 + 1 = 662) exactly, no discrepancy. Rule count confirmed
+unchanged at 51. Final condition block captured verbatim in the
+Subphase 4 completion report.
+
+### C4 — Test Count Progression
+
+| Milestone | Result |
+|---|---|
+| Category C close / pre-C4 baseline | 655 passed, 0 failed |
+| Subphase 1 (`not_same_basename`) | 655 → 657 (+2) |
+| Subphase 2 (path-anchored exclusions) | 657 → 661 (+4) |
+| Subphase 3 (permission floor) | 661 → 662 (+1) |
+| Closing Verification — final | 662 passed, 0 failed |
+| Rule count | 51 — unchanged |
+
+### Git State Note
+
+Consistent with the note carried forward in Entry 011: **C4's changes
+are uncommitted working-tree diffs**, on top of the still-uncommitted-
+beyond-`cda95c3` state. The open decision from Entry 011 (commit
+A+B+C+D+C4 now as a checkpoint, or continue accumulating uncommitted
+work) remains unresolved and should be raised again before Phase 7A
+Subphase 5's actual re-simulation runs, so that simulation results are
+generated against a known, ideally committed, code state.
 
 ---
 
@@ -499,6 +655,248 @@ observation layer. No rule or code fix is possible.
 is rare in real-world campaigns (implies C2 server on the same
 machine, unusual outside of tunneling scenarios). Low practical
 impact on detection coverage.
+
+---
+
+## Entry 011 — 2026-08-07 | Issue Catalog Category C — Confirmed False Positives
+
+**Decision:** Fix all three confirmed false positive issues (C1, C2,
+C3) in a single combined task executed across three subphases, each
+in its own fresh Cursor chat session. All three issues confirmed
+closed. 21 new tests added. Test suite: 634 → 655 passing, 0 failed.
+Rule count unchanged at 51 (conditions-only category).
+
+---
+
+### C1 — `API_AV_PROCESS_ACCESS_001`
+
+**Issue:** Two classes of false positive confirmed across Phase 4B
+and the Phase 7A fix session:
+1. `granted_access` used `contains_any` with 5 literal hex strings
+   (`0x0001`, `0x0021`, `0x1f0fff`, `0x1fffff`, `0x0020`) — same
+   class of bug as Category A's D47/D49: Windows can over-grant
+   access bits, producing a value not in the enumerated list, causing
+   a miss. Same root cause, same fix class.
+2. Two separate `source_image not_ends_with_any` blocks existed in
+   the YAML with a duplicate `svchost.exe` entry — fragile and
+   redundant structure, error-prone to maintain.
+
+**Fix:**
+- `granted_access` operator migrated from `contains_any` to
+  `bits_any_set`. Values reduced to `["0x0001", "0x0020"]` — the
+  two minimal capability bits. The three removed values (`0x0021`,
+  `0x1f0fff`, `0x1fffff`) are redundant supersets under bit-set
+  semantics: any value containing those bits necessarily contains
+  `0x0001` and/or `0x0020`, so they add no detection coverage while
+  narrowing match surface unnecessarily.
+- Two `source_image not_ends_with_any` blocks consolidated into one
+  block with 12 unique values. Duplicate `svchost.exe` entry removed.
+
+**Verified correct:** The pre-existing `test_api_av_process_access_fires`
+test uses `granted_access=0x1fffff`. Under `bits_any_set` with mask
+`0x0001`: `0x1fffff & 0x0001 == 0x0001` ✓. With mask `0x0020`:
+`0x1fffff & 0x0020 == 0x0020` ✓. Test continues to pass unmodified —
+confirmed by independent bitwise verification before any edit was made.
+
+**Test-value authoring error caught mid-implementation:** The
+task.md originally specified `0x1010` as a test mask for the
+over-grant scenario. Independent bitwise check by Cursor revealed
+`0x1010 & 0x0020 == 0` — the mask does not contain the required bit,
+so the test would have been testing the wrong thing. Corrected to
+`0x1020` (`0x1020 & 0x0020 == 0x0020` ✓) before any edit was made.
+Process note: when specifying literal hex/numeric test values in a
+task.md, perform independent bitwise verification before finalizing
+the document rather than relying on Cursor to catch it post-hoc.
+
+**Residual gap — documented, not fixed:** Modern T1562.001 bypass
+techniques (BYOVD kernel-driver kills, direct/indirect syscalls
+bypassing user-mode ETW hooks, DLL hijacking inside the AV process
+itself) operate below the user-mode `OpenProcess` hook that this rule
+observes. These bypass paths are confirmed via threat intelligence:
+Reynolds ransomware (2026), Kasseika (2024), RansomHub
+EDRKillShifter, HookChain/DEF CON 32 (88% bypass rate across 26 EDR
+solutions), ToddyCat vs ESET (2024), LockBit vs MpCmdRun.exe. This
+rule's honest scope is commodity/unsophisticated T1562.001 (Ryuk,
+RunningRAT, Netwalker, Medusa Group-class) — a defensible and
+documented scope, not a weakness. Unfixable at rule-engine level.
+Flagged for research paper Section 2.
+
+**Additional confirmed gap (D45, environmental):** PPL (Protected
+Process Light) prevents `OpenProcess` against `MsMpEng.exe` even
+from a fully elevated Administrator session — confirmed via explicit
+control test in Phase 7A Subphase 5 (`Elevated handle obtained:
+False`). Genuine-detection capability for this rule cannot be
+empirically validated on this VM via the P/Invoke simulation
+technique. The same attacker technique class that bypasses the rule
+(BYOVD) also bypasses the simulation constraint — coherent, not
+contradictory. Flagged for research paper Section 2. Cross-reference
+Category D Entry 012, D-e.
+
+**Tests added:** 6, in new file
+`tests/test_category_c_fixes/test_c1_av_process_access.py`.
+Pre-existing tests in `tests/test_phase4a/test_api_memory_rules.py`
+(`test_api_av_process_access_fires` and the 6-way parametrized
+`test_api_av_process_access_does_not_fire_for_issue1_excluded_sources`)
+confirmed compatible with new `bits_any_set` structure via independent
+bitwise verification and left unmodified.
+
+---
+
+### C2 — `NET_DNS_LONG_QUERY_001`
+
+**Issue:** `SearchApp.exe` (Windows taskbar search process) confirmed
+generating false positives on 3 independent occurrences across Phase
+4B (Subphase 2, Subphase 3, and Subphase 7 formal benign baseline).
+Final Subphase 7 occurrence most precisely documented: timestamp
+`2026-07-12 23:00:19`, query `b59dd060c31a5268a4dd55e6dc581400.azr
+.footprintdns.com` (53 chars, over the 50-char threshold), a
+legitimate Microsoft Azure telemetry domain.
+
+**Fix:** No condition, value, operator, or regex change. The live
+exclusion list already contained `SearchApp.exe` (applied in the
+Phase 4B fix pass). Fix in this session is:
+- Comment-only YAML edit annotating each exclusion's evidence basis:
+  confirmed-incident (SearchApp.exe, svchost.exe) vs.
+  precedent-based (browser processes, msmpeng.exe).
+- One new regression-lock test pinning the confirmed 70-char
+  `svchost.exe` benign sample (`netseer-ipaddr-assoc...fbcdn.net`,
+  Facebook CDN/anti-fraud) as non-firing, to prevent any future
+  session from accidentally narrowing this exclusion and
+  reintroducing the false positive.
+
+**Why content/entropy tightening was rejected:** The confirmed benign
+`SearchApp.exe` sample is a 32-char hex-hash subdomain —
+structurally identical to what real DNS-tunneling payloads produce.
+Entropy heuristics would still false-positive on it. Frequency/
+beaconing detection requires stateful matching the engine does not
+have (same architectural limitation as D18, which eliminated
+`NET_BEACON_INTERVAL_001`). Correctly deferred to a post-Phase-10
+engine revamp if ever warranted.
+
+**Residual gap — documented:** The `svchost.exe` exclusion is
+blanket. A genuinely compromised or injected `svchost.exe` issuing
+real DNS-tunneling queries would also be excluded. Accepted
+tradeoff — compensating coverage exists via
+`CHAIN_SCHEDULED_TASK_SVCHOST_001` and the `API_CRT_*` injection
+rules. Flagged for research paper Section 2.
+
+**Tests added:** 1, in existing file
+`tests/test_phase4a/test_network_rules.py`.
+
+---
+
+### C3 — `API_OPEN_PROCESS_SUSPICIOUS_ACCESS_001`
+
+**Issue:** `wmiprvse.exe`, `vmtoolsd.exe`, and `svchost.exe`
+confirmed generating false positives by opening handles to
+`winlogon.exe`/`lsass.exe` as part of normal OS/VM-integration/WMI
+operation. 9 total occurrences across Phase 4B and Phase 7A
+Subphases 3, 4, and 5. Resolution threshold (4th occurrence during
+deliberate simulation, per decisions_log.md Entry 010) met in Phase
+7A Subphase 5.
+
+**Important distinction from D49/Category A:** D49's affected
+simulations used access masks that Windows over-granted beyond the
+rule's allow-list — a matching-logic bug. C3's false positive
+occurrences use `granted_access=0x1410`, which is already inside
+the allow-list and matches as designed. C3 is a source-exclusion
+scope gap; D49 was a matching-logic bug. Both apply to this same
+rule; both are now fixed independently.
+
+**Masquerading risk identified and addressed:** A bare-basename
+exclusion (e.g. `svchost.exe` only) would be exploitable via
+T1036.005 (Masquerading) — `not_ends_with_any` is a suffix match,
+so `C:\Users\Public\svchost.exe` would also match and be silently
+excluded. Fix uses full path suffixes instead of bare basenames,
+anchoring exclusions to their known system locations. This blocks
+masquerading without requiring any engine changes.
+
+**Path investigation performed (two rounds):**
+- Round 1: `wmiprvse.exe` → `C:\Windows\system32\wbem\wmiprvse.exe`
+  (289 occurrences in logs, both casings). `vmtoolsd.exe` →
+  `C:\Program Files\VMware\VMware Tools\vmtoolsd.exe` (10
+  occurrences, single consistent path). `svchost.exe` →
+  `C:\Windows\system32\svchost.exe` (75 occurrences as source for
+  this rule).
+- Round 2: Confirmed rule engine lowercases both field values and
+  YAML condition values before every `ends_with_any`/
+  `not_ends_with_any` comparison — centrally, in `rules/engine.py`,
+  before any operator runs. Mixed casing in data (`C:\WINDOWS\...`
+  vs `C:\Windows\...`) is handled by this normalization. Confirmed
+  via code read, not assumed.
+
+**Fix — `source_image not_ends_with_any` condition:**
+```yaml
+    - field: source_image
+      operator: not_ends_with_any
+      values:
+        - "MsMpEng.exe"
+        - "\\Windows\\System32\\csrss.exe"
+        - "\\Windows\\System32\\lsass.exe"
+        - "\\Windows\\System32\\winlogon.exe"
+        - "\\Windows\\System32\\wininit.exe"
+        - "\\Windows\\System32\\svchost.exe"
+        - "\\Windows\\System32\\wbem\\wmiprvse.exe"
+        - "\\Program Files\\VMware\\VMware Tools\\vmtoolsd.exe"
+```
+`MsMpEng.exe` deliberately left bare-basename: its real install path
+contains a Defender-platform-version segment
+(`C:\ProgramData\Microsoft\Windows Defender\Platform\<version>\
+MsMpEng.exe`) that changes on every Defender update. Anchoring it
+would silently break the exclusion after the next update.
+`granted_access` (already `bits_any_set` from Category A/D49) and
+`target_image` left completely untouched.
+
+**Residual gap — documented:** Path-anchoring blocks masquerading
+but does nothing against a genuine, correctly-pathed `svchost.exe`
+that has been process-hollowed or injected. Detection of that
+scenario is the province of the `API_CRT_*` injection rules, not
+this one. Defense-in-depth framing — same as C2. Flagged for
+research paper Section 2.
+
+**Tests added:** 14, in existing file
+`tests/unit/test_phase_2b_false_positives.py`, class
+`TestOpenProcessRule`. Includes: 1 masquerade true-positive (new
+capability unlocked by path-anchoring), 9 genuine-path FP
+regression tests (including 2 explicit mixed-casing variants to
+lock in the case-normalization behavior), 4 confirmed-FP exclusion
+tests for the 3 newly authorized source processes. All 9
+pre-existing genuine-detection TP tests confirmed passing
+unregressed.
+
+---
+
+### Cross-Cutting Process Decisions
+
+**Discovery-step safeguard confirmed working (twice in Category C):**
+The mandatory pre-edit discovery step in task.md caught real gaps on
+two separate occasions: (1) in C1, found two pre-existing tests the
+task.md's discovery step predicted wouldn't exist — both confirmed
+compatible after independent bitwise verification, no edit needed;
+(2) in the Closing Verification, `git status` showed pre-existing
+Category A/B working-tree content that the task.md's clean-repo
+assumption didn't account for — Cursor correctly stopped rather than
+assuming it was fine. Both instances resolved cleanly. The
+"stop and report rather than assume" discipline embedded throughout
+task.md is confirmed pulling its weight. Standing rule: preserve
+this discipline verbatim in every future task.md, do not relax it.
+
+**Context-management pattern — confirmed standing project convention:**
+Each multi-subphase task.md must be executed in a separate fresh
+Cursor chat per subphase. Each subphase's starter prompt must
+explicitly restate the prior subphase's closing test count and point
+to task.md as the ground truth. This pattern was applied across all
+three C subphases with zero continuity errors — each subphase's
+baseline regression number exactly matched the prior subphase's
+after-number, confirming no drift between chat sessions. This is now
+a standing project convention, not a one-time recommendation.
+
+**Git state note (carried forward):** As of Category C closure,
+nothing in the project had been git committed since the original
+initial commit. All of Phase 6A, 6B, Phase 7A Subphases 1–5, and
+the entire Category A/B/C fix session existed only in the
+uncommitted working tree. This was resolved in the subsequent commit
+session (commit 89cf182, 2026-08-06) — see git log for full detail.
 
 ---
 

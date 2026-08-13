@@ -125,6 +125,11 @@ python_runtime\python.exe scripts\run_pipeline.py
 cd "\\vmware-host\Shared Folders\filelessmalware"
 Remove-Item logs\.shadowsensor_bookmark.xml -ErrorAction SilentlyContinue
 python_runtime\python.exe scripts\run_pipeline.py
+
+
+net use Z: "\\vmware-host\Shared Folders\filelessmalware"
+cd Z:\
+cd filelessmalware
 ```
 
 ### What you should see at startup
@@ -277,6 +282,14 @@ Both should end with `OVERALL: PASS`.
 pushd "\\vmware-hodel logs\.shadowsensor_bookmark.xml 2>nul
 python_runtime\python.exe scripts\run_pipeline.pyst\Shared Folders\filelessmalware"
 
+```
+
+### CMD — start pipeline
+
+```bat
+pushd "\\vmware-host\Shared Folders\filelessmalware"
+del logs\.shadowsensor_bookmark.xml 2>nul
+python_runtime\python.exe scripts\run_pipeline.py
 ```
 
 ### PowerShell — start pipeline
@@ -632,14 +645,6 @@ python_runtime\python.exe -m pytest tests\ -v
 ```
 
 Expected: **249/249** passing.
-
----
-
-## Known Environment: SQLite Journal Mode
-
-SQLite WAL mode does not work on VMware shared folder paths (`\\vmware-host\Shared Folders\...`). `storage/database.py` handles this automatically — it attempts WAL and falls back to DELETE journal mode with a 5-second `busy_timeout`. No manual action needed.
-
-Both `run_pipeline.py` and `run_dashboard.py` can run simultaneously; `busy_timeout` handles any momentary DB lock between the two processes.
 
 ---
 
@@ -1444,6 +1449,88 @@ Done.
 ```
 
 After retraining, restart the pipeline (`run_pipeline.py`) so it loads the new artifact.
+
+---
+
+## Phase 7A — Simulation Scripts & Feature Extraction (2026-08-12/13)
+
+### Overview
+
+Phase 7A generated labeled suspicious telemetry for five rule-file subphases. All simulation scripts live in `scripts/simulate_subphase_N.py` (N = 1–5). Feature CSVs are in `data/features/`.
+
+| Subphase | YAML | Script | Output CSV | Rows |
+|---|---|---|---|---|
+| 1 | powershell.yaml | simulate_subphase_1.py | suspicious_ps.csv | 312 |
+| 2 | lolbins.yaml | simulate_subphase_2.py | suspicious_lolbins.csv | 196 |
+| 3 | network.yaml | simulate_subphase_3.py | suspicious_network.csv | 194 |
+| 4 | parent_child.yaml | simulate_subphase_4.py | suspicious_chains.csv | 186 |
+| 5 | api_memory.yaml | simulate_subphase_5.py | suspicious_api.csv | 217 |
+
+### Running a simulation script
+
+1. Ensure the ShadowSensor pipeline (`run_pipeline.py`) is running and the DB bookmark is fresh.
+2. On the VM, in a PowerShell window at `Z:\filelessmalware`:
+
+```powershell
+& .\python_runtime\python.exe .\scripts\simulate_subphase_N.py
+```
+
+3. Note the `Script UTC start:` timestamp printed on the first line — you will need it for feature extraction.
+4. Wait for the script to print `SIMULATION COMPLETE` and display the per-path summary table.
+
+### Running feature extraction after simulation
+
+**Important:** Use a Python temp-file workaround for all DB queries from PowerShell. Direct `python.exe -c "..."` with SQL inside PowerShell is unreliable due to quote-stripping.
+
+**Step 1 — Get exact UTC timestamp range from DB:**
+
+```powershell
+$q = @'
+import sqlite3, sys
+conn = sqlite3.connect(r'C:\ShadowSensor\data\shadowsensor.db')
+prefix = sys.argv[1]
+row = conn.execute(
+    "SELECT MIN(timestamp), MAX(timestamp) FROM rule_hits WHERE rule_id LIKE ? AND timestamp >= ?",
+    (prefix + '%', sys.argv[2])
+).fetchone()
+print('Since:', row[0])
+print('Until:', row[1])
+conn.close()
+'@
+$q | Out-File -Encoding utf8 -FilePath "$env:TEMP\ss_query.py"
+& Z:\filelessmalware\python_runtime\python.exe "$env:TEMP\ss_query.py" "PS_" "2026-08-12 00:00:00"
+```
+
+Replace `"PS_"` with the correct prefix (`PS_`, `LOLBIN_`, `NET_`, `CHAIN_`, `API_`) and the ISO timestamp with the script's printed start time.
+
+**Step 2 — Extract features:**
+
+```powershell
+& Z:\filelessmalware\python_runtime\python.exe Z:\filelessmalware\scripts\run_feature_extraction.py `
+  --label 1 `
+  --since "YYYY-MM-DD HH:MM:SS.ffffff" `
+  --until "YYYY-MM-DD HH:MM:SS.ffffff" `
+  --output Z:\filelessmalware\data\features\suspicious_XYZ.csv
+```
+
+Replace the `--since` and `--until` values with the exact UTC timestamps from Step 1. Do not use VM wall-clock time.
+
+### Phase 7A D-findings (operational, VM-specific)
+
+| ID | Finding | Impact |
+|---|---|---|
+| D44 | Pipeline lag up to 10–15 min on this VM; stale hits from prior runs bleed into fresh windows | FP hard stops converted to `[WARN]`; rule engine correctly suppresses svchost.exe-parented PS (confirmed by DB diagnostic) |
+| D45 | `LOLBIN_HH_CHM_001` produced 0 hits across all 3 paths (180 s each) | Likely Sysmon config or Defender blocks EID-1 for hh.exe; deferred — not blocking |
+| D47 | `NET_SUSPICIOUS_PORT_001` structurally unfireable | Sysmon EID-3 filter only captures ports 80/443 on this VM |
+| D48 | `NET_SMB_LATERAL_001` structurally unfireable | Same reason as D47 |
+| D52 | `OpenProcess` on PPL-protected processes (`csrss.exe`, `services.exe`) fails with WinError 5 | Sysmon EID-10 only logs granted handles; denied-access attempts are not logged |
+| D53 | `API_AV_PROCESS_ACCESS_001` produces 0 EID-10 hits against fake AV processes in Temp | Sysmon ProcessAccess filter whitelist does not cover arbitrary processes in user-writable directories |
+| D54 | `python.exe` loading DLLs via `ctypes.WinDLL` produces 0 EID-7 events | Sysmon ImageLoad filter on this VM excludes python.exe |
+| D55 | `rundll32`/`regsvr32` loading unsigned .NET DLLs from Temp/Public produces 0 EID-7 events | Sysmon ImageLoad filter excludes these processes; Defender quarantined `C:\Users\Public\ss_api.dll` |
+
+### Staging CSVs
+
+The simulation scripts also write a staging CSV to `exports/subphase_N_training.csv` (31 features + label, all `label=1`). These are identical in feature content to `data/features/suspicious_*.csv` but are kept separately as reproducible exports.
 
 ---
 

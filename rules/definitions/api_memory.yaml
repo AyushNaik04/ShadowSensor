@@ -216,21 +216,57 @@
     - field: granted_access
       operator: bits_any_set
       values:
-        - "0x0020"     # PROCESS_VM_WRITE — memory write capability
-        - "0x0028"     # PROCESS_VM_WRITE | PROCESS_VM_OPERATION
-        - "0x0038"     # PROCESS_VM_WRITE | PROCESS_VM_OPERATION | PROCESS_VM_READ
-        - "0x001f0fff" # PROCESS_ALL_ACCESS
-        - "0x0021"     # PROCESS_VM_WRITE | PROCESS_CREATE_THREAD
+        - "0x0028"     # PROCESS_VM_WRITE | PROCESS_VM_OPERATION — minimum pairing
+                        # WriteProcessMemory actually requires. Bare 0x0020
+                        # (PROCESS_VM_WRITE alone, no PROCESS_VM_OPERATION) is
+                        # NOT sufficient to perform a memory-write injection via
+                        # the WriteProcessMemory API and is removed as the C4
+                        # false-positive floor (was previously the loosest,
+                        # dominant entry under bits_any_set OR semantics).
+        - "0x001f0fff" # PROCESS_ALL_ACCESS — retained; fully implied by 0x0028
+                        # coverage in practice but kept explicit for clarity
+                        # and to match the sibling VM_WRITE-adjacent rules'
+                        # convention of listing PROCESS_ALL_ACCESS explicitly.
     - field: source_image
       operator: not_ends_with_any
       values:
-        - "msmpeng.exe"
-        - "csrss.exe"
-        - "lsass.exe"
-        - "winlogon.exe"
-        - "wininit.exe"
-        - "werfault.exe"
-        - "svchost.exe"
+        - "MsMpEng.exe"                                   # Windows Defender — bare basename; version-numbered
+                                                            # install path (same accepted residual gap as the
+                                                            # sibling rule's C3 fix — see decisions_log.md Entry 011)
+        - "\\Windows\\System32\\csrss.exe"
+        - "\\Windows\\System32\\lsass.exe"
+        - "\\Windows\\System32\\winlogon.exe"
+        - "\\Windows\\System32\\wininit.exe"
+        - "\\Windows\\System32\\werfault.exe"
+        - "\\Windows\\System32\\svchost.exe"
+        - "\\Windows\\System32\\services.exe"              # C4 CONFIRMED FP — 2026-08-07, services.exe -> svchost.exe, 0x1fffff
+        - "\\Windows\\Sysmon64.exe"                         # C4 CONFIRMED FP — 2026-08-07, Sysmon64.exe -> EdgeUpdate.exe, 0x1fffff
+        - "\\Windows\\System32\\runonce.exe"                # C4 CONFIRMED FP — 2026-08-07, runonce.exe -> EdgeWebView setup.exe, 0x1fffff
+        - "\\Windows\\System32\\conhost.exe"   # E1 CONFIRMED FP — 2026-08-08, conhost.exe -> multiple spawned children, 0x1fffff
+        - "\\Windows\\System32\\cmd.exe"       # E1 CONFIRMED FP — 2026-08-08, cmd.exe -> multiple spawned children, 0x1fffff
+    - field: source_image
+      operator: not_same_basename
+      reference_field: target_image
+      # C4 Subphase 1: source and target sharing the same filename is
+      # overwhelmingly benign multi-process-app behaviour (e.g. an
+      # updater's staged copy opening the installed copy of itself), not
+      # cross-process injection. Basename-only comparison — a source
+      # process masquerading under the exact same filename as its target
+      # is a known, accepted residual gap (same limitation already
+      # documented for the existing parent_is_same_image feature in
+      # ml/features/feature_spec.py; not a new gap introduced here).
+    - field: target_image
+      operator: not_ends_with_any
+      values:
+        - "\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\csc.exe"     # E1 CONFIRMED FP — 2026-08-08, powershell.exe/conhost.exe -> csc.exe (Add-Type compilation), 0x1fffff
+        - "\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\cvtres.exe"  # E1 CONFIRMED FP — 2026-08-08, csc.exe/conhost.exe -> cvtres.exe (resource linking), 0x1fffff
+    - field: call_trace
+      operator: not_contains_any
+      allow_null: true
+      values:
+        - "System.Management.Automation.ni.dll"
+        - "Microsoft.PowerShell.Commands.Management.ni.dll"
+        - "System.Management.Automation.dll"
 
 - id: API_TOKEN_MANIPULATION_001
   name: Process Handle Duplication for Token Theft

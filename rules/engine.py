@@ -48,6 +48,8 @@ def _op_contains_any(field_val: str, values: tuple[str, ...]) -> bool:
 
 def _op_not_contains_any(field_val: str, values: tuple[str, ...]) -> bool:
     """Return True if field_val contains none of the provided substrings."""
+    if not field_val:
+        return True  # None/empty → contains nothing → condition satisfied
     return not any(v.lower() in field_val for v in values)
 
 

@@ -1,0 +1,31 @@
+rule_id,attack_path,field_values_used,result,reason,timestamp_utc
+CHAIN_SCRIPT_HOST_CMD_001,Path A,wscript.exe;ss_chain_cmd.vbs → cmd.exe;parent_image=wscript.exe;image=cmd.exe,PASS,2 hits,2026-08-12T16:35:17.911203
+CHAIN_SCRIPT_HOST_CMD_001,Path B,cscript.exe;ss_chain_cmd.vbs → cmd.exe;parent_image=cscript.exe;image=cmd.exe,PASS,2 hits,2026-08-12T16:35:59.159255
+CHAIN_SCRIPT_HOST_CMD_001,Path C,wscript.exe;ss_chain_cmd.vbs → cmd.exe;parent_image=wscript.exe;image=cmd.exe,PASS,2 hits,2026-08-12T16:36:33.991078
+CHAIN_SCRIPT_HOST_POWERSHELL_001,Path A,wscript.exe;ss_chain_ps.vbs → powershell.exe;parent_image=wscript.exe;image=powershell.exe,PASS,2 hits,2026-08-12T16:37:08.674039
+CHAIN_SCRIPT_HOST_POWERSHELL_001,Path B,cscript.exe;ss_chain_ps.vbs → powershell.exe;parent_image=cscript.exe;image=powershell.exe,PASS,2 hits,2026-08-12T16:37:46.059575
+CHAIN_SCRIPT_HOST_POWERSHELL_001,Path C,cscript.exe;ss_chain_ps64.vbs → SysWOW64\powershell.exe;parent_image=cscript.exe;image=powershell.exe,PASS,2 hits,2026-08-12T16:38:21.703676
+CHAIN_SCHEDULED_TASK_SVCHOST_001,Path A,svchost.exe;-s Schedule;powershell.exe;-enc <base64>,PASS,2 hits,2026-08-12T16:39:13.462853
+CHAIN_SCHEDULED_TASK_SVCHOST_001,Path B,svchost.exe;-s Schedule;powershell.exe;DownloadString http://127.0.0.1/,PASS,2 hits,2026-08-12T16:39:59.887272
+CHAIN_SCHEDULED_TASK_SVCHOST_001,Path C,svchost.exe;-s Schedule;mshta.exe;https://127.0.0.1/a.hta,PASS,3 hits,2026-08-12T16:40:45.692829
+CHAIN_SCHEDULED_TASK_SCRIPT_001,Path A,powershell.exe;C:\Users\Public\ss_d43.txt;parent=svchost.exe(actual),FAIL,D43: taskeng/taskhostw never parent of script tasks on Win10 — svchost.exe -s Schedule is actual parent,2026-08-12T16:41:32.540449
+CHAIN_SCHEDULED_TASK_SCRIPT_001,Path B,powershell.exe;C:\Users\Public\ss_d43.txt;parent=svchost.exe(actual),FAIL,D43: taskeng/taskhostw never parent of script tasks on Win10 — svchost.exe -s Schedule is actual parent,2026-08-12T16:41:49.102943
+CHAIN_SCHEDULED_TASK_SCRIPT_001,Path C,powershell.exe;C:\Users\Public\ss_d43.txt;parent=svchost.exe(actual),FAIL,D43: taskeng/taskhostw never parent of script tasks on Win10 — svchost.exe -s Schedule is actual parent,2026-08-12T16:42:04.374863
+CHAIN_REGSVR32_CHILD_001,Path A,regsvr32.exe /s ss_chain_com.dll → cmd.exe via [ComRegisterFunction];parent_image=regsvr32.exe;image=cmd.exe,FAIL,0 hits after full poll window,2026-08-12T16:42:19.903325
+CHAIN_REGSVR32_CHILD_001,Path B,regsvr32.exe /s /u ss_chain_com.dll → powershell.exe via [ComUnregisterFunction];parent_image=regsvr32.exe;image=powershell.exe,FAIL,0 hits after full poll window,2026-08-12T16:45:32.514374
+CHAIN_REGSVR32_CHILD_001,Path C,regsvr32.exe /s ss_chain_com.dll → cmd.exe via [ComRegisterFunction] (re-register);parent_image=regsvr32.exe;image=cmd.exe,FAIL,0 hits after full poll window,2026-08-12T16:48:40.319782
+CHAIN_LOLBIN_CHILD_001,Path A,mshta.exe;ss_chain_cmd_mshta.hta → cmd.exe;parent_image=mshta.exe;image=cmd.exe,PASS,2 hits,2026-08-12T16:51:49.066523
+CHAIN_LOLBIN_CHILD_001,Path B,cmstp.exe /s /ni ss_chain_cmstp.inf → cmd.exe via RunPreSetupCommandsSection;parent_image=cmstp.exe;image=cmd.exe,FAIL,0 hits after full poll window,2026-08-12T16:52:26.129331
+CHAIN_LOLBIN_CHILD_001,Path C,regasm.exe /nologo /codebase ss_chain_com.dll → cmd.exe via [ComRegisterFunction];parent_image=regasm.exe;image=cmd.exe,PASS,2 hits,2026-08-12T16:55:36.500451
+CHAIN_BROWSER_SHELL_001,Path A,msedge.exe/chrome.exe → cmd.exe/powershell.exe,PARTIAL,D42: browser→shell chain not simulatable via subprocess — requires browser exploit or malicious extension,2026-08-12T16:56:15.230282
+CHAIN_BROWSER_SHELL_001,Path B,msedge.exe/chrome.exe → cmd.exe/powershell.exe,PARTIAL,D42: browser→shell chain not simulatable via subprocess — requires browser exploit or malicious extension,2026-08-12T16:56:15.230344
+CHAIN_BROWSER_SHELL_001,Path C,msedge.exe/chrome.exe → cmd.exe/powershell.exe,PARTIAL,D42: browser→shell chain not simulatable via subprocess — requires browser exploit or malicious extension,2026-08-12T16:56:15.230371
+CHAIN_OFFICE_POWERSHELL_001,Path A,winword.exe/excel.exe/powerpnt.exe → powershell.exe/cmd.exe/wscript.exe,SKIP,Office not installed on simulation VM — Office parent process cannot be launched,2026-08-12T16:56:15.238405
+CHAIN_OFFICE_POWERSHELL_001,Path B,winword.exe/excel.exe/powerpnt.exe → powershell.exe/cmd.exe/wscript.exe,SKIP,Office not installed on simulation VM — Office parent process cannot be launched,2026-08-12T16:56:15.238642
+CHAIN_OFFICE_POWERSHELL_001,Path C,winword.exe/excel.exe/powerpnt.exe → powershell.exe/cmd.exe/wscript.exe,SKIP,Office not installed on simulation VM — Office parent process cannot be launched,2026-08-12T16:56:15.238673
+CHAIN_OFFICE_CMD_001,Path A,winword.exe/excel.exe/powerpnt.exe → powershell.exe/cmd.exe/wscript.exe,SKIP,Office not installed on simulation VM — Office parent process cannot be launched,2026-08-12T16:56:15.243032
+CHAIN_OFFICE_CMD_001,Path B,winword.exe/excel.exe/powerpnt.exe → powershell.exe/cmd.exe/wscript.exe,SKIP,Office not installed on simulation VM — Office parent process cannot be launched,2026-08-12T16:56:15.243077
+CHAIN_OFFICE_CMD_001,Path C,winword.exe/excel.exe/powerpnt.exe → powershell.exe/cmd.exe/wscript.exe,SKIP,Office not installed on simulation VM — Office parent process cannot be launched,2026-08-12T16:56:15.243098
+CHAIN_OFFICE_WSCRIPT_001,Path A,winword.exe/excel.exe/powerpnt.exe → powershell.exe/cmd.exe/wscript.exe,SKIP,Office not installed on simulation VM — Office parent process cannot be launched,2026-08-12T16:56:15.246780
+CHAIN_OFFICE_WSCRIPT_001,Path B,winword.exe/excel.exe/powerpnt.exe → powershell.exe/cmd.exe/wscript.exe,SKIP,Office not installed on simulation VM — Office parent process cannot be launched,2026-08-12T16:56:15.246901
+CHAIN_OFFICE_WSCRIPT_001,Path C,winword.exe/excel.exe/powerpnt.exe → powershell.exe/cmd.exe/wscript.exe,SKIP,Office not installed on simulation VM — Office parent process cannot be launched,2026-08-12T16:56:15.247009

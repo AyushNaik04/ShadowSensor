@@ -1,0 +1,25 @@
+rule_id,attack_path,field_values_used,result,reason,timestamp_utc
+API_OPEN_PROCESS_SUSPICIOUS_ACCESS_001,Path A,python.exe;granted_access=0x1f0fff;target=lsass.exe;source=python_runtime\python.exe,PASS,2 hits,2026-08-13T02:53:38.621601
+API_OPEN_PROCESS_SUSPICIOUS_ACCESS_001,Path B,python.exe;granted_access=0x1410;target=winlogon.exe;source=python_runtime\python.exe,PASS,2 hits,2026-08-13T02:54:50.862355
+API_OPEN_PROCESS_SUSPICIOUS_ACCESS_001,Path C,python.exe;granted_access=0x1fffff;target=csrss.exe;source=python_runtime\python.exe,FAIL,0 hits after full poll window,2026-08-13T02:55:24.922862
+API_TOKEN_MANIPULATION_001,Path A,python.exe;granted_access=0x0040;target=lsass.exe;PROCESS_DUP_HANDLE,PASS,2 hits,2026-08-13T02:58:30.322262
+API_TOKEN_MANIPULATION_001,Path B,python.exe;granted_access=0x0440;target=winlogon.exe;DUP_HANDLE|QUERY_INFO,PASS,2 hits,2026-08-13T02:59:09.484010
+API_TOKEN_MANIPULATION_001,Path C,python.exe;granted_access=0x1440;target=services.exe;DUP_HANDLE|QUERY_INFO|extra,FAIL,0 hits after full poll window,2026-08-13T02:59:43.567189
+API_AV_PROCESS_ACCESS_001,Path A,python.exe;granted_access=0x0001;target=C:\Windows\Temp\msmpeng.exe;PROCESS_TERMINATE (fake process),FAIL,0 hits after full poll window,2026-08-13T03:02:48.558446
+API_AV_PROCESS_ACCESS_001,Path B,python.exe;granted_access=0x0020;target=C:\Windows\Temp\msmpeng.exe;PROCESS_VM_WRITE (fake process),FAIL,0 hits after full poll window,2026-08-13T03:05:53.531494
+API_AV_PROCESS_ACCESS_001,Path C,python.exe;granted_access=0x0001;target=C:\Windows\Temp\mpcmdrun.exe;PROCESS_TERMINATE (fake process),FAIL,0 hits after full poll window,2026-08-13T03:08:58.404367
+API_OPEN_PROCESS_VM_WRITE_001,Path A,python.exe;granted_access=0x0028;target=notepad.exe;VM_WRITE|VM_OPERATION,PASS,2 hits,2026-08-13T03:12:03.749094
+API_OPEN_PROCESS_VM_WRITE_001,Path B,python.exe;granted_access=0x001f0fff;target=notepad.exe;PROCESS_ALL_ACCESS,PASS,2 hits,2026-08-13T03:12:44.673817
+API_OPEN_PROCESS_VM_WRITE_001,Path C,python.exe;granted_access=0x0028;target=csrss.exe;VM_WRITE|VM_OPERATION,FAIL,0 hits after full poll window,2026-08-13T03:13:18.766847
+API_DLL_LOAD_SUSPICIOUS_PATH_001,Path A,python.exe subprocess;image_loaded=C:\Windows\Temp\ss_api.dll;signed=false;staging=\temp\,FAIL,0 hits after full poll window,2026-08-13T03:16:25.269807
+API_DLL_LOAD_SUSPICIOUS_PATH_001,Path B,python.exe subprocess;image_loaded=C:\Users\Public\ss_api.dll;signed=false;staging=c:\users\public\,FAIL,0 hits after full poll window,2026-08-13T03:19:34.944316
+API_DLL_LOAD_SUSPICIOUS_PATH_001,Path C,python.exe subprocess;image_loaded=C:\ProgramData\ss_api.dll;signed=false;staging=\programdata\,FAIL,0 hits after full poll window,2026-08-13T03:22:41.830462
+API_LOLBIN_DLL_UNSIGNED_001,Path A,rundll32.exe;image_loaded=C:\Windows\Temp\ss_api.dll;signed=false,FAIL,0 hits after full poll window,2026-08-13T03:25:48.643726
+API_LOLBIN_DLL_UNSIGNED_001,Path B,regsvr32.exe /s ss_api.dll;signed=false,FAIL,0 hits after full poll window,2026-08-13T03:29:35.566493
+API_LOLBIN_DLL_UNSIGNED_001,Path C,rundll32.exe;image_loaded=C:\Users\Public\ss_api.dll;signed=false,FAIL,0 hits after full poll window,2026-08-13T03:32:42.924524
+API_CRT_SUSPICIOUS_SOURCE_001,Path A,powershell.exe;source_image=powershell.exe;target=notepad.exe;crt_start=ntdll!RtlExitUserThread,PASS,4 hits,2026-08-13T03:35:58.277017
+API_CRT_SUSPICIOUS_SOURCE_001,Path B,powershell.exe;source_image=powershell.exe;target=notepad.exe;run_2;crt_start=ntdll!RtlExitUserThread,PASS,4 hits,2026-08-13T03:37:45.065181
+API_CRT_SUSPICIOUS_SOURCE_001,Path C,powershell.exe;source_image=powershell.exe;target=notepad.exe;run_3;crt_start=ntdll!RtlExitUserThread,PASS,4 hits,2026-08-13T03:38:32.307144
+API_CRT_SENSITIVE_TARGET_001,Path A,powershell.exe;source_image=powershell.exe;target=lsass.exe;crt_start=ntdll!RtlExitUserThread,PASS,4 hits,2026-08-13T03:39:14.357918
+API_CRT_SENSITIVE_TARGET_001,Path B,powershell.exe;source_image=powershell.exe;target=winlogon.exe;crt_start=ntdll!RtlExitUserThread,PASS,4 hits,2026-08-13T03:41:00.583562
+API_CRT_SENSITIVE_TARGET_001,Path C,powershell.exe;source_image=powershell.exe;target=lsass.exe;run_2;crt_start=ntdll!RtlExitUserThread,PASS,4 hits,2026-08-13T03:42:47.880667
