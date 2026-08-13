@@ -2,7 +2,7 @@
 
 *Single shared status file. Paste the current version of this file into the start of any Codex or dedicated Claude session prompt so that surface knows exactly where the project stands, with no need to recall prior conversations. Maintained by the ShadowSensor Prompt Agent — updated every time Ayush brings a progress report back.*
 
-**Last Updated:** 2026-08-13 — **Phase 7B COMPLETE ✅.** All three subphases done. RF classifier trained (ROC-AUC 0.837), integrated into live scorer, dashboard wired, `docs/phase7b_report.md` written. 25 new tests total (SP1: 12, SP2: 6, SP3: 7). Full suite: 705 passed, 0 failed. Commits pending. Phase 8A (Alert Correlation) is next.
+**Last Updated:** 2026-08-13 — **Phase 7B COMPLETE ✅.** All three subphases done. RF classifier trained (ROC-AUC 0.837), integrated into live scorer, dashboard wired, `docs/phase7b_report.md` written. 25 new tests total (SP1: 12, SP2: 6, SP3: 7). Full suite: 705 passed, 0 failed. **Committed: `1ed0c5d` — not yet pushed to origin.** Phase 8A (Alert Correlation) is next.
 
 ---
 

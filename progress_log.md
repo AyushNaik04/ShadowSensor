@@ -705,6 +705,6 @@ All 5 subphase CSVs combined into `data/features/suspicious.csv` (1,105 rows, 31
 
 Random Forest classifier trained on Phase 7A's labeled telemetry (1,105 suspicious) + Phase 6A's benign baseline (621 benign). 28 features used (`open_process_suspicious_access` and `hour_of_day` excluded — anti-discriminative / near-zero signal). CV ROC-AUC 0.837 ± 0.014, F1 0.833 ± 0.016. Model artifact at `ml/models/random_forest.joblib`. RF scorer integrated into `ml/scoring/scorer.py` — dual-model architecture live (IF + RF both write to `model_scores`). ML Insights dashboard RF section wired with live data. `docs/phase7b_report.md` and `docs/phase7b_metrics.json` written. 25 new tests (705 total, 0 failed). Commits pending.
 
-**Phase 7B is CLOSED. Phase 8A (Alert Correlation / Severity Engine) is next.**
+**Phase 7B is CLOSED. Commit: `1ed0c5d` — not yet pushed. Phase 8A (Alert Correlation / Severity Engine) is next.**
 
 ---
