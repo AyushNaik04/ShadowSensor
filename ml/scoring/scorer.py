@@ -28,8 +28,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import joblib
+import pandas as pd
+
 from ml.features.extractor import EventFeatureExtractor
 from ml.training.train_isolation_forest import MODEL_PATH, load_artifact, score_features
+from ml.training.train_random_forest import MODEL_PATH as RF_MODEL_PATH
 from storage.database import get_session
 from storage.models import ModelScoreRecord
 
@@ -130,6 +134,29 @@ class EventScorer:
             len(self._artifact["feature_names"]),
         )
 
+        self._rf_artifact: dict | None = None
+        try:
+            if RF_MODEL_PATH.exists():
+                self._rf_artifact = joblib.load(RF_MODEL_PATH)
+                logger.info(
+                    "[scorer] Random Forest loaded from %s (features=%d)",
+                    RF_MODEL_PATH,
+                    len(self._rf_artifact.get("feature_names", [])),
+                )
+            else:
+                logger.info(
+                    "[scorer] Random Forest model not found at %s — RF scoring inactive",
+                    RF_MODEL_PATH,
+                )
+        except Exception as exc:
+            logger.error(
+                "[scorer] RF artifact load failed [%s]: %s",
+                type(exc).__name__,
+                exc,
+                exc_info=True,
+            )
+            self._rf_artifact = None
+
     def score_and_persist(
         self,
         event: Any,
@@ -209,5 +236,35 @@ class EventScorer:
                 )
                 # Score was computed successfully — return it even if persistence
                 # failed.  The caller can decide whether to retry or log further.
+
+        # Step 5 — RF scoring (optional — active only when random_forest.joblib is loaded).
+        # Reuses `features` dict from Step 2. Does NOT re-call self._extractor.extract().
+        if self._rf_artifact is not None and event_db_id is not None:
+            try:
+                rf_feature_names: list[str] = self._rf_artifact["feature_names"]
+                rf_row = pd.DataFrame(
+                    [[features.get(f, 0) for f in rf_feature_names]],
+                    columns=rf_feature_names,
+                )
+                rf_clf = self._rf_artifact["model"]
+                rf_score = float(rf_clf.predict_proba(rf_row)[:, 1][0])
+                ts_rf = _coerce_event_timestamp(event)
+                with get_session() as session:
+                    rf_record = ModelScoreRecord(
+                        event_fk=event_db_id,
+                        model_type="random_forest",
+                        score=rf_score,
+                        timestamp=ts_rf,
+                    )
+                    session.add(rf_record)
+                    session.flush()
+            except Exception as exc:
+                logger.error(
+                    "[scorer] RF scoring/persist failed (non-fatal) [%s]: %s",
+                    type(exc).__name__,
+                    exc,
+                    exc_info=True,
+                )
+                # Non-fatal: IF score is still returned normally below.
 
         return score

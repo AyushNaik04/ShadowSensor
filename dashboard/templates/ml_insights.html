@@ -120,24 +120,97 @@
     {% endif %}
   </div>
 
-  {# ======= RANDOM FOREST SECTION (Phase 7B placeholder) ======= #}
-  <div class="card ml-section ml-section-placeholder">
+  {# ======= RANDOM FOREST SECTION ======= #}
+  <div class="card ml-section">
     <div class="ml-section-header">
       <div class="ml-section-title-row">
-        <svg class="ml-model-icon" viewBox="0 0 32 32" width="22" height="22" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="1.8" opacity="0.5">
+        <svg class="ml-model-icon" viewBox="0 0 32 32" width="22" height="22" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="1.8">
           <rect x="4" y="16" width="6" height="12" rx="1"/>
           <rect x="13" y="10" width="6" height="18" rx="1"/>
           <rect x="22" y="4" width="6" height="24" rx="1"/>
         </svg>
-        <h2 class="ml-section-title ml-section-title-muted">Random Forest</h2>
-        <span class="ml-status-badge ml-status-future">○ Phase 7B</span>
+        <h2 class="ml-section-title">Random Forest</h2>
+        {% if random_forest.trained %}
+          <span class="ml-status-badge ml-status-active">● Active</span>
+        {% else %}
+          <span class="ml-status-badge ml-status-pending">● Awaiting Data</span>
+        {% endif %}
       </div>
+      {% if random_forest.training_date %}
+        <div class="ml-training-date">Model artifact: {{ random_forest.training_date }}</div>
+      {% endif %}
     </div>
-    <p class="ml-placeholder-note">
-      Random Forest training requires labeled suspicious telemetry (Phase 7A).
-      This section will display precision, recall, F1, and ROC-AUC metrics once
-      Phase 7B training is complete.
-    </p>
+
+    {% if random_forest.trained %}
+
+      {# --- Stats row --- #}
+      <div class="ml-stats-row">
+        <div class="ml-stat-card">
+          <div class="ml-stat-value">{{ "{:,}".format(random_forest.total_scored) }}</div>
+          <div class="ml-stat-label">Events Scored</div>
+        </div>
+        <div class="ml-stat-card">
+          <div class="ml-stat-value">{{ "%.4f"|format(random_forest.score_min) }}</div>
+          <div class="ml-stat-label">Min Score</div>
+        </div>
+        <div class="ml-stat-card">
+          <div class="ml-stat-value">{{ "%.4f"|format(random_forest.score_max) }}</div>
+          <div class="ml-stat-label">Max Score</div>
+        </div>
+        <div class="ml-stat-card">
+          <div class="ml-stat-value">{{ "%.4f"|format(random_forest.score_mean) }}</div>
+          <div class="ml-stat-label">Mean Score</div>
+        </div>
+        <div class="ml-stat-card">
+          <div class="ml-stat-value">{{ "%.4f"|format(random_forest.score_median) }}</div>
+          <div class="ml-stat-label">Median Score</div>
+        </div>
+      </div>
+
+      {# --- Score distribution --- #}
+      {% if random_forest.brackets %}
+        <div class="ml-distribution-section">
+          <h3 class="ml-subsection-title">Score Distribution (all time)</h3>
+          <div class="ml-distribution-bars">
+            {% for bracket in random_forest.brackets %}
+              {% set pct = bracket.pct %}
+              {% if pct <= 20 %}
+                {% set bar_class = "ml-bar-low" %}
+              {% elif pct <= 40 %}
+                {% set bar_class = "ml-bar-mid" %}
+              {% else %}
+                {% set bar_class = "ml-bar-high" %}
+              {% endif %}
+              {# Color by score range: 0–0.3 normal, 0.3–0.6 elevated, 0.6–1.0 anomalous #}
+              {% if loop.index <= 3 %}
+                {% set range_class = "ml-range-normal" %}
+              {% elif loop.index <= 6 %}
+                {% set range_class = "ml-range-elevated" %}
+              {% else %}
+                {% set range_class = "ml-range-anomalous" %}
+              {% endif %}
+              <div class="ml-bar-row">
+                <div class="ml-bar-label">{{ bracket.range }}</div>
+                <div class="ml-bar-track">
+                  <div class="ml-bar-fill {{ range_class }}" style="width: {{ [bracket.pct, 100]|min }}%"></div>
+                </div>
+                <div class="ml-bar-count">{{ bracket.count }} <span class="ml-bar-pct">({{ bracket.pct }}%)</span></div>
+              </div>
+            {% endfor %}
+          </div>
+          <div class="ml-distribution-legend">
+            <span class="ml-legend-dot ml-range-normal"></span> 0.0–0.3 Normal &nbsp;
+            <span class="ml-legend-dot ml-range-elevated"></span> 0.3–0.6 Elevated &nbsp;
+            <span class="ml-legend-dot ml-range-anomalous"></span> 0.6–1.0 Anomalous
+          </div>
+        </div>
+      {% endif %}
+
+    {% else %}
+      <div class="ml-no-data-banner">
+        <p>No RF scored events yet. Run the pipeline with a trained Random Forest model.</p>
+      </div>
+    {% endif %}
   </div>
 
 </div>

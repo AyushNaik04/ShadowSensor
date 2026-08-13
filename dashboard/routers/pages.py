@@ -458,6 +458,7 @@ def dashboard_ml_insights(request: Request) -> HTMLResponse:
 
     from dashboard.services.ml_insights_service import (
         get_isolation_forest_status,
+        get_random_forest_status,
         get_score_trend,
     )
 
@@ -465,6 +466,20 @@ def dashboard_ml_insights(request: Request) -> HTMLResponse:
         isolation_forest = get_isolation_forest_status()
     except Exception:
         isolation_forest = {
+            "trained": False,
+            "training_date": None,
+            "total_scored": 0,
+            "score_min": None,
+            "score_max": None,
+            "score_mean": None,
+            "score_median": None,
+            "brackets": [],
+        }
+
+    try:
+        random_forest = get_random_forest_status()
+    except Exception:
+        random_forest = {
             "trained": False,
             "training_date": None,
             "total_scored": 0,
@@ -487,7 +502,7 @@ def dashboard_ml_insights(request: Request) -> HTMLResponse:
             "request": request,
             "active_page": "ml_insights",
             "isolation_forest": isolation_forest,
-            "random_forest": {"trained": False},
+            "random_forest": random_forest,
             "trend_data_json": _json.dumps(trend_data),
         },
     )

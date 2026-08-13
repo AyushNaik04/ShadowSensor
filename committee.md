@@ -399,8 +399,8 @@ Hard stop after script is written. Report:
 4. ~~Run simulate_subphase_6.py~~ — **SUPERSEDED** (SP5 covers all 8 api_memory.yaml rules)
 5. SP7 final audit — **DONE** (2026-08-13, this session)
 6. Update status.md, progress_log.md — **DONE** (this session)
-7. Final commit — **PENDING** — commit all A/B/C/D/C4/E1/E2 + SP1-5 scripts/CSVs together
-8. Update progress_log.md with commit hash after commit
+7. ~~Final commit~~ — **DONE** `fda482d` + `325ff85` pushed to origin/main (2026-08-13)
+8. ~~Update progress_log.md with commit hash~~ — **DONE** (commit `325ff85`)
 
 ---
 

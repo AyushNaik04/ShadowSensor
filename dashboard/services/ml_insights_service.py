@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from ml.training.train_isolation_forest import MODEL_PATH
+from ml.training.train_random_forest import MODEL_PATH as RF_MODEL_PATH
 from storage.database import get_session
 from storage.models import ModelScoreRecord
 
@@ -158,3 +159,71 @@ def get_score_trend(
         }
         for hour, v in sorted(hourly.items())
     ]
+
+
+def get_random_forest_status(model_path: Path = RF_MODEL_PATH) -> dict[str, Any]:
+    """Return Random Forest status and all-time score distribution.
+
+    Reads every model_scores row with model_type='random_forest' and
+    computes summary statistics in Python.  Suitable for page loads on a
+    host with up to ~100k scored events; no batching required at current
+    data volumes.
+
+    Args:
+        model_path: path to the persisted joblib artifact (default: production path).
+
+    Returns:
+        Dict with keys:
+          trained (bool)           — True if any scored rows exist
+          training_date (str|None) — artifact mtime formatted string, or None
+          total_scored (int)       — count of model_scores rows
+          score_min (float|None)
+          score_max (float|None)
+          score_mean (float|None)
+          score_median (float|None)
+          brackets (list[dict])    — 10 dicts with range/count/pct keys
+    """
+    with get_session() as session:
+        rows = (
+            session.query(ModelScoreRecord.score)
+            .filter(ModelScoreRecord.model_type == "random_forest")
+            .all()
+        )
+
+    scores = [r.score for r in rows]
+    training_date = _artifact_training_date(model_path)
+
+    if not scores:
+        return {
+            "trained": False,
+            "training_date": training_date,
+            "total_scored": 0,
+            "score_min": None,
+            "score_max": None,
+            "score_mean": None,
+            "score_median": None,
+            "brackets": [],
+        }
+
+    total = len(scores)
+    bracket_data: list[dict[str, Any]] = []
+    for label, lo, hi in _SCORE_BRACKETS:
+        count = sum(1 for s in scores if lo <= s < hi)
+        bracket_data.append(
+            {
+                "range": label,
+                "count": count,
+                "pct": round(100.0 * count / total, 1),
+            }
+        )
+
+    return {
+        "trained": True,
+        "training_date": training_date,
+        "total_scored": total,
+        "score_min": round(min(scores), 4),
+        "score_max": round(max(scores), 4),
+        "score_mean": round(sum(scores) / total, 4),
+        "score_median": round(statistics.median(scores), 4),
+        "brackets": bracket_data,
+    }

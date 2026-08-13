@@ -2,12 +2,23 @@
 
 *Single shared status file. Paste the current version of this file into the start of any Codex or dedicated Claude session prompt so that surface knows exactly where the project stands, with no need to recall prior conversations. Maintained by the ShadowSensor Prompt Agent — updated every time Ayush brings a progress report back.*
 
-**Last Updated:** 2026-08-13 — **Phase 7A COMPLETE ✅.** SP7 (Consolidation) executed: all 5 subphase CSVs combined → `data/features/suspicious.csv` (1,105 rows, 30 features, label=1). Decontamination PASSED. IF score comparison done (suspicious mean 0.2152 vs benign 0.1394 — 14.7% vs 5.0% anomalous rate). `docs/phase7a_final_report.md` written. Phase 7B (Random Forest) is next.
-All changes still uncommitted on top of cda95c3.
+**Last Updated:** 2026-08-13 — **Phase 7B COMPLETE ✅.** All three subphases done. RF classifier trained (ROC-AUC 0.837), integrated into live scorer, dashboard wired, `docs/phase7b_report.md` written. 25 new tests total (SP1: 12, SP2: 6, SP3: 7). Full suite: 705 passed, 0 failed. Commits pending. Phase 8A (Alert Correlation) is next.
 
 ---
 
 ## Current Phase
+**Phase 8A — Alert Correlation / Severity Engine — NOT STARTED**
+
+Next up: alert deduplication, severity tiering, `suspected_families` field population. See `ShadowSensor_Master_Implementation_Plan.md` Phase 8A section.
+
+**Phase 7B — Train Random Forest — COMPLETE ✅**
+
+- Subphase 1 (RF Training Script): **COMPLETE ✅** — 2026-08-13. `ml/training/train_random_forest.py` created. Model: `ml/models/random_forest.joblib`. Metrics JSON: `docs/phase7b_metrics.json`. 12 new tests (692 total). ROC-AUC 0.837 ± 0.014. Top features: parent_cmd_length, cmd_entropy, unique_rules_fired.
+- Subphase 2 (RF Scorer Integration): **COMPLETE ✅** — 2026-08-13. `ml/scoring/scorer.py` modified — RF artifact loaded at startup, RF `model_scores` row written per event (non-fatal). 6 new tests (698 total). RF row confirmed: model_type='random_forest', score=0.6.
+- Subphase 3 (Dashboard Wire-Up + Report): **COMPLETE ✅** — 2026-08-13. `get_random_forest_status()` added to service. Router wired. Template RF placeholder replaced with live data section. `docs/phase7b_report.md` written. 7 new tests (705 total). Dashboard: HTTP 200, RF badge "Awaiting Data", IF section unaffected.
+
+**Phase 7B — Train Random Forest — COMPLETE ✅**
+
 **Phase 7A — Generate Labeled Suspicious Telemetry via Sandbox Simulation — COMPLETE ✅**
 
 - Subphase 1 (PowerShell, 11 rules): **COMPLETE** ✅ — 2026-08-12 re-simulated (§21.5 reversal) — 312 rows exported (`suspicious_ps.csv`), 6 PASS / 5 PARTIAL (2 D-f blocked, 3 pipeline-lag — hits confirmed in DB), 0 SKIPPED. Prior partial CSVs superseded.
@@ -45,8 +56,8 @@ All changes still uncommitted on top of cda95c3.
 | 5 | Feature Engineering pipeline | Codex | **Complete** ✅ |
 | 6 | 6A — Benign baseline collection | Dedicated Claude session | **Complete** ✅ |
 | 6 | 6B — Train Isolation Forest | Cursor (Claude Sonnet 4.6) | **Complete** ✅ |
-| 7 | 7A — Generate labeled suspicious telemetry *(+ family-template enrichment)* | Dedicated Claude session | **In Progress** 🔶 (Subphases 1–4/7 complete) |
-| 7 | 7B — Train Random Forest | Codex | Not Started |
+| 7 | 7A — Generate labeled suspicious telemetry *(+ family-template enrichment)* | Dedicated Claude session | **Complete** ✅ |
+| 7 | 7B — Train Random Forest | Cursor Grok 4.6 High Fast | **Complete** ✅ |
 | 8 | 8A — Alert correlation/severity engine *(+ `suspected_families` field)* | Codex | Not Started |
 | 8 | 8B — Validate severity tiers | Dedicated Claude session | Not Started |
 | 9 | 9A — Packaging + service wrapper *(+ tray companion app — 1 → 3 days)* | Codex | Not Started |
@@ -57,6 +68,12 @@ All changes still uncommitted on top of cda95c3.
 ---
 
 ## Recent Activity (most recent first)
+
+- 2026-08-13 — **Phase 7B Subphase 3 (Dashboard Wire-Up + Report) COMPLETE — Phase 7B FULLY CLOSED ✅.** `dashboard/services/ml_insights_service.py`: added `get_random_forest_status()` (mirrors IF function, queries `model_type='random_forest'`). `dashboard/routers/pages.py`: router now calls `get_random_forest_status()` and passes live RF dict to template. `dashboard/templates/ml_insights.html`: RF placeholder block (Phase 7B / `ml-status-future`) fully replaced with live data section — shows "Awaiting Data" badge when no RF rows, "Active" with stats/distribution when RF rows present. `docs/phase7b_report.md` written (training data, feature set, CV results, feature importance, Phase 7A coverage gaps, research paper notes). 7 new tests. Dashboard: HTTP 200, RF badge "Awaiting Data", IF section unaffected. Full suite: 705 passed, 0 failed (independently verified). Phase 7B complete — 25 new tests total (SP1: 12, SP2: 6, SP3: 7). Phase 8A next.
+
+- 2026-08-13 — **Phase 7B Subphase 2 (RF Scorer Integration) COMPLETE.** `ml/scoring/scorer.py` modified: added `import joblib`, `import pandas as pd`, `RF_MODEL_PATH` import, `_rf_artifact` load block in `__init__`, and Step 5 in `score_and_persist()` writing `ModelScoreRecord(model_type='random_forest', ...)`. RF failure is non-fatal — IF score still returned. RF row confirmed: model_type='random_forest', score=0.6. 6 new tests in `tests/test_phase7b/test_rf_scorer.py`. Committee fix: `tests/test_phase6b/test_scoring_integration.py::test_score_and_persist_writes_model_scores_row` updated — was asserting `len(rows)==1`, now asserts `len(rows)>=1` and filters for IF row by model_type (SP2 implementation was correct; test was written before RF existed). 698 total passing, 0 failed. SP3 authorized.
+
+- 2026-08-13 — **Phase 7B Subphase 1 (RF Training Script) COMPLETE.** Script: `ml/training/train_random_forest.py`. Model artifact: `ml/models/random_forest.joblib` (keys: model, feature_names, cv_metrics). Metrics JSON: `docs/phase7b_metrics.json`. Training data: 621 benign + 1,105 suspicious = 1,726 total. Feature set: 28 features (`open_process_suspicious_access` and `hour_of_day` excluded). 5-fold stratified CV: precision 0.818 ± 0.008, recall 0.848 ± 0.028, F1 0.833 ± 0.016, ROC-AUC 0.837 ± 0.014. Top permutation features: parent_cmd_length (0.0197), cmd_entropy (0.0182), unique_rules_fired (0.0112). 12 new tests, 692 total passing. **Research paper note:** behavioral/entropy features dominate over pure rule-hit features in permutation importance — RF generalizes beyond rule coverage. SP2 (scorer integration) authorized.
 
 - 2026-08-13 — **Phase 7A Subphase 5 (API/Memory, 8 rules) COMPLETE.** SIM window: 02:53–03:44 UTC. Script: `simulate_subphase_5.py`. Feature CSV: `suspicious_api.csv` pending DB query. Results: EID-8 (Rules 7/8) **PASS** — CRT to notepad/lsass/winlogon confirmed, E5 workaround (ntdll.RtlExitUserThread) confirmed. EID-10 (Rules 1/2/4) **PARTIAL** — 2/3 paths PASS each (lsass/winlogon/notepad targets fire), Path C FAIL on all three (D52: Sysmon doesn't log denied OpenProcess on csrss/services PPL). Rule 3 AV_PROCESS **FAIL/D53** — handles acquired on fake msmpeng but Sysmon ProcessAccess filter doesn't include fake processes in Temp; real MsMpEng PPL. EID-7 (Rules 5/6) **FAIL/D54/D55** — Sysmon ImageLoad filter on this VM does not capture python.exe or LOLBin DLL loads; rundll32 hung 20s (DLL WAS loaded but no EID-7); Defender quarantined `C:\Users\Public\ss_api.dll` mid-simulation. D30 pre-flight: clean. 4 new D-findings: D52–D55.
 
@@ -154,7 +171,7 @@ All changes still uncommitted on top of cda95c3.
 
 **Phase 6B — carried forward (not blocking current work):**
 - **Circular import: `dashboard.routers.pages` ↔ `dashboard.app`** — pre-existing defect, out of scope for Phase 6B. Fix should be done at the start of Phase 7A before any new dashboard routes are added (no dashboard routes have been touched in 7A through Subphase 4). Full suite unaffected (586 passed, 0 failed). See decisions_log.md Entry 007.
-- **Feature-influence note for Phase 7B:** `open_process_suspicious_access` (~39% benign activation, WARP-cluster explained) and `hour_of_day`/`is_off_hours` (VM clock discrepancy from Phase 6A — note: this is a *different* issue than the UTC/IST storage discovery in Subphase 1; the Phase 6A clock issue was a genuine drift bug, now resolved, whereas the Subphase 1 discovery is normal UTC-vs-local-display behavior, not a bug) were flagged as disproportionately influential during Isolation Forest training. Carried to Phase 7B for awareness before Random Forest training.
+- **Feature-influence note for Phase 7B — RESOLVED:** `open_process_suspicious_access` and `hour_of_day` were confirmed anti-discriminative/low-signal and dropped from the RF feature set. See `progress_log_phase7b.md` SP1 entry for full details.
 
 **Deferred to later phases (unchanged):**
 - Phase 8A: Alert correlation, deduplication, suspected_families population

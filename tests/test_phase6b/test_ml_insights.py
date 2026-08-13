@@ -327,10 +327,11 @@ def test_ml_insights_page_shows_pending_when_no_data(api_client_empty) -> None:
     assert "Awaiting Data" in response.text or "Phase 7B" in response.text
 
 
-def test_ml_insights_page_random_forest_is_placeholder(api_client_populated) -> None:
-    """Random Forest section shows Phase 7B placeholder text."""
+def test_ml_insights_page_rf_section_present(api_client_populated) -> None:
+    """RF section is present in the ML Insights page after Phase 7B wiring."""
     response = api_client_populated.get("/dashboard/ml-insights")
-    assert "Phase 7B" in response.text
+    assert response.status_code == 200
+    assert "Random Forest" in response.text
 
 
 def test_ml_insights_page_no_server_error_on_populated_data(api_client_populated) -> None:
@@ -339,3 +340,15 @@ def test_ml_insights_page_no_server_error_on_populated_data(api_client_populated
     body = response.text.lower()
     assert "internal server error" not in body
     assert "traceback" not in body
+
+
+def test_ml_insights_page_rf_shows_awaiting_when_no_rf_rows(api_client_populated) -> None:
+    """RF section shows Awaiting Data badge when model_scores has no random_forest rows."""
+    response = api_client_populated.get("/dashboard/ml-insights")
+    assert "Awaiting Data" in response.text
+
+
+def test_ml_insights_page_rf_placeholder_badge_gone(api_client_populated) -> None:
+    """The old Phase 7B future-badge CSS class is no longer present after SP3 wiring."""
+    response = api_client_populated.get("/dashboard/ml-insights")
+    assert "ml-status-future" not in response.text

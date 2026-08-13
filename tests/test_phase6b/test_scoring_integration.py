@@ -396,8 +396,12 @@ def test_score_and_persist_writes_model_scores_row(
     rows = conn.execute("SELECT event_fk, model_type, score FROM model_scores").fetchall()
     conn.close()
 
-    assert len(rows) == 1, f"Expected 1 model_scores row; got {len(rows)}"
-    row = rows[0]
+    # SP2 onwards: scorer may write both isolation_forest and random_forest rows.
+    # Assert at least one row exists, then verify the isolation_forest row specifically.
+    assert len(rows) >= 1, f"Expected at least 1 model_scores row; got {len(rows)}"
+    if_rows = [r for r in rows if r["model_type"] == "isolation_forest"]
+    assert len(if_rows) == 1, f"Expected exactly 1 isolation_forest row; got {len(if_rows)}"
+    row = if_rows[0]
     assert row["event_fk"] == 42
     assert row["model_type"] == "isolation_forest"
     assert 0.0 <= row["score"] <= 1.0
